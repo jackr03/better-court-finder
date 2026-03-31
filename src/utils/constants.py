@@ -16,5 +16,4 @@ BADMINTON_60MIN = 'badminton-60min'
 # File locations
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 COURTS_DB_PATH = os.path.join(BASE_DIR, '../../data/courts.db')
-COURTS_ICS_PATH = os.path.join(BASE_DIR, '../../data/courts.ics')
 BOT_CONFIG_PATH = os.path.join(BASE_DIR, '../../data/bot_config.toml')

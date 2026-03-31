@@ -1,14 +1,9 @@
 import logging
-from datetime import date, datetime
+from datetime import datetime
 from typing import Optional
-from zoneinfo import ZoneInfo
 
-from ics import Event, Calendar
-
-from src.models import Court
 from src.services.court_database import CourtDatabase
 from src.services.court_fetcher import CourtFetcher
-from src.utils.constants import VENUE_MAP, COURTS_ICS_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +23,7 @@ class CourtUpdater:
 			return
 		self.court_fetcher = CourtFetcher()
 		self.court_database = CourtDatabase()
-		self.last_updated: Optional[date] = None
+		self.last_updated: Optional[datetime] = None
 		self._initialised = True
 
 	def update(self) -> None:
@@ -37,9 +32,7 @@ class CourtUpdater:
 		self.court_database.insert(courts)
 		logger.info('Court database updated successfully')
 
-		available_courts = self.court_database.get_all_available()
 		self._set_last_updated()
-		self._create_ics_file(available_courts)
 
 	def get_last_updated(self) -> str:
 		"""
@@ -52,20 +45,3 @@ class CourtUpdater:
 	def _set_last_updated(self) -> None:
 		self.last_updated = datetime.now()
 		logger.debug(f'Last updated time set to {self.get_last_updated()}')
-
-	def _create_ics_file(self, courts: list[Court]) -> None:
-		logger.info('Creating ICS file')
-		cal = Calendar()
-		tz = ZoneInfo('Europe/London')
-
-		for court in courts:
-			event = Event()
-			event.name = f'{court.name} ({VENUE_MAP[court.venue_slug]})'
-			event.begin = datetime.combine(court.date, court.starts_at).replace(tzinfo=tz)
-			event.end = datetime.combine(court.date, court.ends_at).replace(tzinfo=tz)
-			event.location = VENUE_MAP[court.venue_slug]
-			event.description = f'Last updated: {self.get_last_updated()}'
-			cal.events.add(event)
-
-		with open(COURTS_ICS_PATH, 'w') as f:
-			f.write(cal.serialize())
