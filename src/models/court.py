@@ -16,6 +16,31 @@ class Court:
 	venue: Venue
 	spaces: int
 
+	def to_dict(self) -> dict:
+		return {
+			'starts_at': self.starts_at.isoformat(),
+			'ends_at': self.ends_at.isoformat(),
+			'duration': self.duration,
+			'composite_key': self.composite_key,
+			'activity': self.activity.value,
+			'date': self.date.isoformat(),
+			'venue': self.venue.value,
+			'spaces': self.spaces
+		}
+
+	@classmethod
+	def from_dict(cls, data: dict) -> 'Court':
+		return cls(
+			starts_at=time.fromisoformat(data['starts_at']),
+			ends_at=time.fromisoformat(data['ends_at']),
+			duration=data['duration'],
+			composite_key=data['composite_key'],
+			activity=Activity(data['activity']),
+			date=date.fromisoformat(data['date']),
+			venue=Venue(data['venue']),
+			spaces=data['spaces'],
+		)
+
 	@classmethod
 	def from_api(cls, data: dict) -> 'Court':
 		return cls(

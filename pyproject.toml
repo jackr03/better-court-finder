@@ -10,6 +10,7 @@ dependencies = [
     "logging>=0.4.9.6",
     "pydantic>=2.11.4",
     "pytest>=8.3.5",
+    "redis>=7.4.0",
     "requests>=2.32.3",
     "requests-mock>=1.12.1",
     "toml>=0.10.2",

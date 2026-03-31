@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 
 import aiohttp
 
+from src.cache import Cache
 from src.config import CONFIG
 from src.models.activity import Activity
 from src.models.court import Court
@@ -13,7 +14,7 @@ from src.models.venue import Venue
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
-class CourtPoller:
+class Poller:
     API_URL = 'https://better-admin.org.uk/api/activities/venue/{venue}/activity/{activity}/v2/times'
     HEADERS = {
         'accept': 'application/json',
@@ -22,24 +23,29 @@ class CourtPoller:
         'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0.1 Safari/605.1.15'
     }
 
-    def __init__(self):
+    def __init__(self, cache: Cache) -> None:
+        self.cache = cache
         self._stop_event = asyncio.Event()
 
     # TODO: Store to Redis cache
     # TODO: Publish to Redis
     async def run(self) -> None:
-        logger.info(f'Starting CourtPoller...)')
+        logger.info(f'Starting poller...)')
         logger.debug(CONFIG.polling)
         async with aiohttp.ClientSession(headers=self.HEADERS) as session:
             while not self._stop_event.is_set():
                 courts = await self._fetch_all(session)
 
-                available_courts = 0
+                # Group by (venue, date) to store in cache
+                grouped: dict[tuple[Venue, date], list[Court]] = {}
                 for court in courts:
-                    if court.spaces > 0:
-                        available_courts += 1
-                logger.info(f'Fetched {len(courts)} court objects, {available_courts} available courts')
+                    key = (court.venue, court.date)
+                    grouped.setdefault(key, []).append(court)
 
+                for (venue, booking_date), courts in grouped.items():
+                    await self.cache.set(venue, booking_date, courts)
+
+                logger.info(f'Cached {len(grouped)} keys')
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=CONFIG.polling.interval)
                 except asyncio.TimeoutError:
@@ -107,5 +113,6 @@ class CourtPoller:
         return exponential_delay / 2 + random.uniform(0, exponential_delay / 2)
 
 if __name__ == '__main__':
-    poller = CourtPoller()
+    cache = Cache()
+    poller = Poller(cache)
     asyncio.run(poller.run())
