@@ -1,7 +1,8 @@
 import asyncio
 import logging
 
-from src.tasks import telegram_bot_task, court_updater_task
+from src.court_cache import CourtCache
+from src.court_poller import CourtPoller
 
 logging.basicConfig(
 	level=logging.INFO,
@@ -11,9 +12,13 @@ logging.basicConfig(
 
 
 async def main():
+	cache = CourtCache()
+	await cache.connect()
+
+	poller = CourtPoller(cache)
+
 	await asyncio.gather(
-		court_updater_task(),
-		telegram_bot_task(),
+		poller.run()
 	)
 
 

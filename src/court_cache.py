@@ -10,13 +10,13 @@ from src.models.venue import Venue
 
 logger = logging.getLogger(__name__)
 
-class Cache:
+class CourtCache:
     def __init__(self):
         self.client = Redis(host=CONFIG.redis.host, port=CONFIG.redis.port, decode_responses=True)
 
     async def connect(self) -> None:
         await self.client.ping()
-        logger.debug(f'Connected to Redis (key={CONFIG.redis.key}, port={CONFIG.redis.port})')
+        logger.debug(f'Connected to Redis (host={CONFIG.redis.host}, port={CONFIG.redis.port})')
 
     async def get(self, venue: Venue, booking_date: date) -> list[Court]:
         key = self._format_key(venue, booking_date)

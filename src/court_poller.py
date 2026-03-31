@@ -5,16 +5,16 @@ from datetime import date, datetime, timedelta
 
 import aiohttp
 
-from src.cache import Cache
 from src.config import CONFIG
+from src.court_cache import CourtCache
 from src.models.activity import Activity
 from src.models.court import Court
 from src.models.venue import Venue
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)
 
-class Poller:
+
+class CourtPoller:
     API_URL = 'https://better-admin.org.uk/api/activities/venue/{venue}/activity/{activity}/v2/times'
     HEADERS = {
         'accept': 'application/json',
@@ -23,11 +23,10 @@ class Poller:
         'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0.1 Safari/605.1.15'
     }
 
-    def __init__(self, cache: Cache) -> None:
+    def __init__(self, cache: CourtCache) -> None:
         self.cache = cache
         self._stop_event = asyncio.Event()
 
-    # TODO: Store to Redis cache
     # TODO: Publish to Redis
     async def run(self) -> None:
         logger.info(f'Starting poller...)')
@@ -111,8 +110,3 @@ class Poller:
         """Get delay with exponential backoff and equal jitter."""
         exponential_delay = CONFIG.polling.base_delay * (2 ** attempt)
         return exponential_delay / 2 + random.uniform(0, exponential_delay / 2)
-
-if __name__ == '__main__':
-    cache = Cache()
-    poller = Poller(cache)
-    asyncio.run(poller.run())
