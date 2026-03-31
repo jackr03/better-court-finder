@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from datetime import date, datetime, timedelta
 
 import aiohttp
@@ -27,7 +28,8 @@ class CourtPoller:
     # TODO: Store to Redis cache
     # TODO: Publish to Redis
     async def run(self) -> None:
-        logger.info(f'Running CourtPoller (interval={CONFIG.polling.interval}, max_concurrent={CONFIG.polling.max_concurrent})')
+        logger.info(f'Starting CourtPoller...)')
+        logger.debug(CONFIG.polling)
         async with aiohttp.ClientSession(headers=self.HEADERS) as session:
             while not self._stop_event.is_set():
                 courts = await self._fetch_all(session)
@@ -60,25 +62,49 @@ class CourtPoller:
 
         async def fetch_one(venue, activity: Activity, booking_date: date):
             async with sem:
-                return await self.fetch(session, venue, activity, booking_date)
+                return await self._fetch(session, venue, activity, booking_date)
 
         results = await asyncio.gather(*[fetch_one(venue, activity, booking_date) for venue, activity, booking_date in args])
         return [court for batch in results for court in batch]
 
-    # TODO: Add retry with exponential backoff with jitter
-    async def fetch(self, session: aiohttp.ClientSession, venue: Venue, activity: Activity, booking_date: date) -> list[Court]:
+    async def _fetch(self, session: aiohttp.ClientSession, venue: Venue, activity: Activity, booking_date: date) -> list[Court]:
         logger.debug(f'Fetching (venue={venue}, activity={activity}, booking_date={booking_date})')
-        try:
-            async with session.get(
-                self.API_URL.format(venue=venue, activity=activity),
-                params={'date': booking_date.isoformat()}
-            ) as response:
-                response.raise_for_status()
-                data = (await response.json())['data']
-                return [Court.from_api(court) for court in data]
-        except Exception:
-            logger.exception(f'Error fetching (venue={venue}, activity={activity}, booking_date={booking_date})')
-            return []
+
+        for attempt in range(0, CONFIG.polling.max_retries + 1):
+            try:
+                async with session.get(
+                    self.API_URL.format(venue=venue, activity=activity),
+                    params={'date': booking_date.isoformat()}
+                ) as response:
+                    # Retry with exponential backoff + jitter
+                    if response.status == 429 or response.status >= 500:
+                        if attempt < CONFIG.polling.max_retries:
+                            delay = self._get_backoff_delay(attempt)
+                            logger.warning(f'Retrying in {delay:.1f}s (status={response.status}, attempt={attempt}, venue={venue}, activity={activity}, booking_date={booking_date})')
+                            await asyncio.sleep(delay)
+                            continue
+                        logger.error(f'Max retries exceeded (status={response.status}, venue={venue}, activity={activity}, booking_date={booking_date})')
+                        return []
+
+                    response.raise_for_status()
+                    data = (await response.json())['data']
+                    return [Court.from_api(court) for court in data]
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                if attempt < CONFIG.polling.max_retries:
+                    delay = self._get_backoff_delay(attempt)
+                    logger.warning(f'Retrying in {delay:.1f}s (attempt={attempt}, venue={venue}, activity={activity}, booking_date={booking_date})')
+                    await asyncio.sleep(delay)
+                    continue
+                logger.exception(f'Max retries exceeded (venue={venue}, activity={activity}, booking_date={booking_date})')
+                return []
+
+        return []
+
+    @staticmethod
+    def _get_backoff_delay(attempt: int) -> float:
+        """Get delay with exponential backoff and equal jitter."""
+        exponential_delay = CONFIG.polling.base_delay * (2 ** attempt)
+        return exponential_delay / 2 + random.uniform(0, exponential_delay / 2)
 
 if __name__ == '__main__':
     poller = CourtPoller()
