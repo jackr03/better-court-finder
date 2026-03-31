@@ -4,6 +4,7 @@ from datetime import date
 from src.models import Court
 
 
+# TODO: Redo
 # TODO: Group by venue in the future
 def format_court_availability(
 		courts: list[Court],

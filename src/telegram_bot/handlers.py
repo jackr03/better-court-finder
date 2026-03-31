@@ -4,11 +4,11 @@ from datetime import timedelta, datetime, date
 from aiogram import Router
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-
 from src.services.court_database import CourtDatabase
 from src.services.court_updater import CourtUpdater
+
+from src.court_formatter import format_court_availability
 from src.telegram_bot.bot_config import BotConfig
-from src.utils.court_formatter import format_court_availability
 
 logger = logging.getLogger(__name__)
 router = Router()

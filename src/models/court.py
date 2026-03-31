@@ -1,52 +1,30 @@
+from dataclasses import dataclass
 from datetime import time, date
 
-from pydantic import BaseModel, field_validator
+from src.models.activity import Activity
+from src.models.venue import Venue
 
 
-class Court(BaseModel):
-	composite_key: str
-	venue_slug: str
-	category_slug: str
-	name: str
-
-	date: date
+@dataclass(frozen=True)
+class Court:
 	starts_at: time
 	ends_at: time
 	duration: str
-
-	price: str
+	composite_key: str
+	activity: Activity
+	date: date
+	venue: Venue
 	spaces: int
 
-	class Config:
-		frozen = True
-
-	def __eq__(self, other):
-		return isinstance(other, Court) and self.composite_key == other.composite_key
-
-	def __hash__(self):
-		return hash(self.composite_key)
-
-	@field_validator('date', mode='before')
 	@classmethod
-	def parse_court_date(cls, v) -> date:
-		return date.fromisoformat(v)
-
-	@field_validator('starts_at', 'ends_at', mode='before')
-	@classmethod
-	def parse_times(cls, v) -> time:
-		return time.fromisoformat(v['format_24_hour']) \
-			if isinstance(v, dict) \
-			else time.fromisoformat(v)
-
-	@field_validator('price', mode='before')
-	@classmethod
-	def parse_price(cls, v) -> str:
-		return v['formatted_amount'] \
-			if isinstance(v, dict) \
-			else v
-
-	def format_with_spaces(self) -> str:
-		return f'🏸 {self.starts_at.strftime("%H:%M")} - {self.ends_at.strftime("%H:%M")} ({self.duration}), {self.spaces} space(s) left'
-
-	def format_without_spaces(self) -> str:
-		return f'🏸 {self.starts_at.strftime("%H:%M")} - {self.ends_at.strftime("%H:%M")} ({self.duration})'
+	def from_api(cls, data: dict) -> 'Court':
+		return cls(
+			starts_at=time.fromisoformat(data['starts_at']['format_24_hour']),
+			ends_at=time.fromisoformat(data['ends_at']['format_24_hour']),
+			duration=data['duration'],
+			composite_key=data['composite_key'],
+			activity=Activity(data['category_slug']),
+			date=date.fromisoformat(data['date']),
+			venue=Venue(data['venue_slug']),
+			spaces=data['spaces']
+		)

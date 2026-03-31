@@ -3,12 +3,12 @@ import logging
 from collections import defaultdict
 
 from aiogram import Bot, Dispatcher
-
-from src.models import Court
 from src.services.court_database import CourtDatabase
+
+from src.court_formatter import format_court_availability
+from src.models import Court
 from src.telegram_bot.bot_config import BotConfig
 from src.telegram_bot.handlers import router
-from src.utils.court_formatter import format_court_availability
 
 logger = logging.getLogger(__name__)
 
