@@ -1,198 +1,155 @@
 import logging
-from datetime import timedelta, datetime, date
+from datetime import datetime, timedelta, date
+from functools import wraps
+from typing import Callable
 
 from aiogram import Router
-from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from src.services.court_database import CourtDatabase
-from src.services.court_updater import CourtUpdater
+from aiogram.filters import Command
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from src.court_formatter import format_court_availability
-from src.telegram_bot.bot_config import BotConfig
+from src.court.cache import CourtCache
+from src.models.court import Court
+from src.models.time_range import TimeRange
+from src.models.venue import Venue
+from src.telegram_bot.constants import Commands, CallbackData, Messages, Keyboards
+from src.telegram_bot.formatter import format_court_availability
+from src.utils import format_date_and_time, format_date
 
 logger = logging.getLogger(__name__)
 router = Router()
 
-
-# TODO: Add an introduction message to /start
-@router.message(CommandStart())
-async def start_command(message: Message):
-	_log_command(message)
-	await message.answer('Test')
+_PARSE_MODE = 'Markdown'
 
 
-@router.message(Command('search'))
-async def search_command(message: Message):
-	_log_command(message)
-	text, keyboard, parse_mode = _create_search_message()
-	await message.answer(text, reply_markup=keyboard, parse_mode=parse_mode)
+def log_update(func: Callable):
+	@wraps(func)
+	async def wrapper(update: Message | CallbackQuery, *args, **kwargs):
+		if isinstance(update, Message):
+			logger.info(f'Received command: {update.text} from user {update.from_user.id}')
+		elif isinstance(update, CallbackQuery):
+			logger.info(f'Received callback query: {update.data} from user {update.from_user.id}')
+		return await func(update, *args, **kwargs)
+	return wrapper
 
 
-@router.callback_query(lambda c: c.data == 'search')
-async def search_callback(callback_query: CallbackQuery):
-	_log_callback_query(callback_query)
-	text, keyboard, parse_mode = _create_search_message()
-	await callback_query.message.edit_text(text, reply_markup=keyboard, parse_mode=parse_mode)
-
-
-@router.callback_query(lambda c: c.data == 'search_all')
-async def search_all_callback(callback_query: CallbackQuery):
-	_log_callback_query(callback_query)
-	courts = CourtDatabase().get_all_available()
-
-	await callback_query.message.edit_text(
-		format_court_availability(
-			courts,
-			'❌ No courts available.'),
-		reply_markup=_create_back_button_keyboard('search')
+@router.message(Command(Commands.SEARCH))
+@log_update
+async def search_command(message: Message, cache: CourtCache):
+	text, keyboard, parse_mode = await _create_search_message(cache)
+	await message.answer(
+		text,
+		reply_markup=keyboard,
+		parse_mode=parse_mode
 	)
 
 
-@router.callback_query(lambda c: c.data == 'search_by_date')
-async def search_by_date_callback(callback_query: CallbackQuery):
-	_log_callback_query(callback_query)
+@router.callback_query(lambda c: c.data == Commands.SEARCH)
+@log_update
+async def search_callback(callback_query: CallbackQuery, cache: CourtCache):
+	text, keyboard, parse_mode = await _create_search_message(cache)
+	await callback_query.message.edit_text(
+		text,
+		reply_markup=keyboard,
+		parse_mode=parse_mode
+	)
 
+
+@router.callback_query(lambda c: c.data == Commands.SEARCH_ALL)
+@log_update
+async def search_all_callback(callback_query: CallbackQuery, cache: CourtCache):
+	courts = await cache.get_all_available_courts()
+
+	await _handle_court_results(
+		callback_query,
+		courts,
+		Messages.NO_COURTS,
+		Commands.SEARCH
+	)
+
+
+@router.callback_query(lambda c: c.data == Commands.SEARCH_BY_DATE)
+@log_update
+async def search_by_date_callback(callback_query: CallbackQuery, cache: CourtCache):
 	dates = [(datetime.today() + timedelta(days=i)).date() for i in range(6)]
-
 	keyboard_buttons = [
 		[InlineKeyboardButton(
-			text=f'📅 {d.strftime("%A (%d/%m)")}',
-			callback_data=f'search_by_date_{d.isoformat()}'
+			text=f'📅 {format_date(d)}',
+			callback_data=f'{CallbackData.DATE_PREFIX}{d.isoformat()}'
 		)] for d in dates
 	]
 
-	keyboard_buttons.append([_create_back_button('search')])
-
-	await callback_query.message.edit_text(
-		f'🔍 Select a date:\n{_get_last_updated()}',
-		reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_buttons),
-		parse_mode='Markdown'
+	await _send_selection_message(
+		callback_query,
+		cache,
+		Messages.SELECT_DATE,
+		keyboard_buttons,
+		Commands.SEARCH
 	)
 
 
-@router.callback_query(lambda c: c.data.startswith('search_by_date_'))
-async def search_by_date_selected_callback(callback_query: CallbackQuery):
-	_log_callback_query(callback_query)
-	prefix = 'search_by_date_'
-	search_date = date.fromisoformat(callback_query.data[len(prefix):])
-	courts = CourtDatabase().get_available_by_date(search_date)
+@router.callback_query(lambda c: c.data.startswith(CallbackData.DATE_PREFIX))
+@log_update
+async def search_by_date_selected_callback(callback_query: CallbackQuery, cache: CourtCache):
+	search_date = date.fromisoformat(_get_callback_data(callback_query, CallbackData.DATE_PREFIX))
+	courts = await cache.get_available_by_date(search_date)
 
-	await callback_query.message.edit_text(
-		format_court_availability(
-			courts,
-			f'❌ No courts available on {search_date.strftime("%A (%d/%m)")}.'),
-		reply_markup=_create_back_button_keyboard('search_by_date')
+	await _handle_court_results(
+		callback_query,
+		courts,
+		Messages.NO_COURTS_FOR_DATE.format(date=search_date),
+		Commands.SEARCH_BY_DATE
 	)
 
 
-@router.callback_query(lambda c: c.data == 'search_by_time')
-async def search_by_time_callback(callback_query: CallbackQuery):
-	_log_callback_query(callback_query)
-
-	keyboard_buttons = [
-		[InlineKeyboardButton(
-			text='🌅 Morning (07:00 - 12:00)',
-			callback_data='search_by_time_morning'
-		)],
-		[InlineKeyboardButton(
-			text='☀️ Afternoon (12:00 - 17:00)',
-			callback_data='search_by_time_afternoon'
-		)],
-		[InlineKeyboardButton(
-			text='🌙 Evening (17:00 - 22:00)',
-			callback_data='search_by_time_evening'
-		)],
-		[_create_back_button('search')]
-	]
-
-	await callback_query.message.edit_text(
-		f'🔍 Select a time:\n{_get_last_updated()}',
-		reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard_buttons),
-		parse_mode='Markdown'
+@router.callback_query(lambda c: c.data == Commands.SEARCH_BY_TIME)
+@log_update
+async def search_by_time_callback(callback_query: CallbackQuery, cache: CourtCache):
+	await _send_selection_message(
+		callback_query,
+		cache,
+		Messages.SELECT_TIME,
+		Keyboards.TIME,
+		Commands.SEARCH
 	)
 
 
-@router.callback_query(lambda c: c.data.startswith('search_by_time_'))
-async def search_by_time_selected_callback(callback_query: CallbackQuery):
-	_log_callback_query(callback_query)
-	prefix = 'search_by_time_'
-	time_range = {
-		'morning': ('07:00', '12:00'),
-		'afternoon': ('12:00', '17:00'),
-		'evening': ('17:00', '22:00')
-	}[callback_query.data[len(prefix):]]
+@router.callback_query(lambda c: c.data.startswith(CallbackData.TIME_PREFIX))
+@log_update
+async def search_by_time_selected_callback(callback_query: CallbackQuery, cache: CourtCache):
+	time_range = TimeRange[_get_callback_data(callback_query, CallbackData.TIME_PREFIX)]
+	courts = await cache.get_available_by_time_range(time_range)
 
-	courts = CourtDatabase().get_available_by_time_range(time_range)
-
-	await callback_query.message.edit_text(
-		format_court_availability(
-			courts,
-			f'❌ No courts available for the time range {time_range[0]} - {time_range[1]}.'
-		),
-		reply_markup=_create_back_button_keyboard('search_by_time')
+	await _handle_court_results(
+		callback_query,
+		courts,
+		Messages.NO_COURTS_FOR_TIME.format(time_range=time_range.label),
+		Commands.SEARCH_BY_TIME
 	)
 
 
-@router.message(Command('notify'))
-async def notify_command(message: Message):
-	_log_command(message)
-	user_id = message.from_user.id
-
-	if user_id in BotConfig().get_notify_list():
-		BotConfig().remove_from_notify_list(user_id)
-		await message.answer(
-			'''
-			🔕 You are no longer on the notification list.
-🏸 You won't receive updates about court availability.
-			'''
-		)
-	else:
-		BotConfig().add_to_notify_list(user_id)
-		await message.answer(
-			'''
-			🔔 You are now on the notification list.
-🏸 You will be pinged automatically when courts become available.
-			'''
-		)
-
-
-@router.message(Command('refresh'))
-async def refresh_command(message: Message):
-	_log_command(message)
-
-	msg = await message.answer(
-		'🔄 Manually updating courts, please wait...'
-	)
-
-	CourtUpdater().update()
-
-	await msg.edit_text(
-		f'✅ Courts updated successfully!\n{_get_last_updated()}',
-		parse_mode='Markdown'
+@router.callback_query(lambda c: c.data == Commands.SEARCH_BY_VENUE)
+@log_update
+async def search_by_venue_callback(callback_query: CallbackQuery, cache: CourtCache):
+	await _send_selection_message(
+		callback_query,
+		cache,
+		Messages.SELECT_VENUE,
+		Keyboards.VENUE,
+		Commands.SEARCH
 	)
 
 
-# HELPER METHODS
-def _create_search_message() -> tuple[str, InlineKeyboardMarkup, str]:
-	keyboard = InlineKeyboardMarkup(inline_keyboard=[
-		[InlineKeyboardButton(
-			text='🗓️ All',
-			callback_data='search_all'
-		)],
-		[InlineKeyboardButton(
-			text='📅 Date',
-			callback_data='search_by_date'
-		)],
-		[InlineKeyboardButton(
-			text='⏰ Time',
-			callback_data='search_by_time'
-		)]
-	])
+@router.callback_query(lambda c: c.data.startswith(CallbackData.VENUE_PREFIX))
+@log_update
+async def search_by_venue_selected_callback(callback_query: CallbackQuery, cache: CourtCache):
+	venue = Venue(_get_callback_data(callback_query, CallbackData.VENUE_PREFIX))
+	courts = await cache.get_available_by_venue(venue)
 
-	return (
-		f'🔍 Choose your search criteria:\n{_get_last_updated()}',
-		keyboard,
-		'Markdown'
+	await _handle_court_results(
+		callback_query,
+		courts,
+		Messages.NO_COURTS_FOR_VENUE.format(venue=venue.display_name),
+		Commands.SEARCH_BY_VENUE
 	)
 
 
@@ -209,15 +166,54 @@ def _create_back_button(callback_data: str) -> InlineKeyboardButton:
 	)
 
 
-def _get_last_updated() -> str:
-	"""Return last updated time as a markdown string with italics."""
-	last_updated = CourtUpdater().get_last_updated()
-	return f'_Last updated: {last_updated}_'
+def _get_callback_data(callback_query: CallbackQuery, prefix: str) -> str:
+	return callback_query.data[len(prefix):]
 
 
-def _log_command(message: Message) -> None:
-	logger.debug(f'Received command: {message.text} from user {message.from_user.id}')
+async def _create_search_message(cache: CourtCache) -> tuple[str, InlineKeyboardMarkup, str]:
+	last_updated = await _get_last_updated(cache)
+	return (
+		Messages.SEARCH_PROMPT.format(last_updated=last_updated),
+		InlineKeyboardMarkup(inline_keyboard=Keyboards.SEARCH),
+		_PARSE_MODE
+	)
 
 
-def _log_callback_query(callback_query: CallbackQuery) -> None:
-	logger.debug(f'Received callback query: {callback_query.data} from user {callback_query.from_user.id}')
+async def _send_selection_message(
+		callback_query: CallbackQuery,
+		cache: CourtCache,
+		header: str,
+		keyboard_buttons: list,
+		back_command: str,
+) -> None:
+	last_updated = await _get_last_updated(cache)
+	buttons = list(keyboard_buttons) + [[_create_back_button(back_command)]]
+
+	await callback_query.message.edit_text(
+		header.format(last_updated=last_updated),
+		reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+		parse_mode=_PARSE_MODE
+	)
+
+
+async def _handle_court_results(
+		callback_query: CallbackQuery,
+		courts: list[Court],
+		empty_message: str,
+		back_button: str | None
+) -> None:
+	if courts:
+		message = format_court_availability(courts)
+	else:
+		message = empty_message
+	await callback_query.message.edit_text(
+		message,
+		reply_markup=_create_back_button_keyboard(back_button) if back_button else None,
+		parse_mode=_PARSE_MODE
+	)
+
+
+async def _get_last_updated(cache: CourtCache) -> str:
+	last_updated = await cache.get_last_updated()
+	formatted_last_updated = format_date_and_time(last_updated)
+	return f'_Last updated: {formatted_last_updated}_' if last_updated else 'Never'

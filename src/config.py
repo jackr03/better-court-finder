@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 
 
@@ -14,10 +15,12 @@ class RedisConfig:
     host: str = 'localhost'
     port: int = 6379
     ttl: int = 330
+    namespace: str = 'bcf'
 
 
 @dataclass(frozen=True)
 class Config:
+    logging_level = logging.INFO
     polling: PollingConfig = PollingConfig()
     redis: RedisConfig = RedisConfig()
 

@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 import aiohttp
 
 from src.config import CONFIG
-from src.court_cache import CourtCache
+from src.court.cache import CourtCache
 from src.models.activity import Activity
 from src.models.court import Court
 from src.models.venue import Venue
@@ -27,9 +27,8 @@ class CourtPoller:
         self.cache = cache
         self._stop_event = asyncio.Event()
 
-    # TODO: Publish to Redis
     async def run(self) -> None:
-        logger.info(f'Starting poller...)')
+        logger.info(f'Starting court poller')
         logger.debug(CONFIG.polling)
         async with aiohttp.ClientSession(headers=self.HEADERS) as session:
             while not self._stop_event.is_set():
@@ -44,7 +43,8 @@ class CourtPoller:
                 for (venue, booking_date), courts in grouped.items():
                     await self.cache.set(venue, booking_date, courts)
 
-                logger.info(f'Cached {len(grouped)} keys')
+                await self.cache.set_last_updated()
+                logger.info(f'Cached {len(grouped)} events')
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=CONFIG.polling.interval)
                 except asyncio.TimeoutError:
@@ -54,7 +54,7 @@ class CourtPoller:
         self._stop_event.set()
 
     async def _fetch_all(self, session: aiohttp.ClientSession) -> list[Court]:
-        logger.info('Fetching all courts')
+        logger.debug('Polling')
 
         # Check the next 6 days for all courts
         dates = [(datetime.today() + timedelta(days=i)).date() for i in range(6)]
