@@ -25,6 +25,8 @@ class CourtPoller:
 
     def __init__(self, cache: CourtCache) -> None:
         self.cache = cache
+        self._last_available: dict[str, Court] = {}
+        self._cold_start = False
         self._stop_event = asyncio.Event()
 
     async def run(self) -> None:
@@ -34,16 +36,34 @@ class CourtPoller:
             while not self._stop_event.is_set():
                 courts = await self._fetch_all(session)
 
-                # Group by (venue, date) to store in cache
+                # 1. Group by (venue, date) to store in Redis
+                # 2. Store in-memory to compute court changes later
                 grouped: dict[tuple[Venue, date], list[Court]] = {}
+                available: dict[str, Court] = {}
                 for court in courts:
                     key = (court.venue, court.date)
                     grouped.setdefault(key, []).append(court)
+                    if court.spaces > 0:
+                        available[court.composite_key] = court
+
+                newly_available, newly_unavailable = self._compute_diff(available)
+                self._last_available = available
+
+                if self._cold_start:
+                    self._cold_start = False
+                else:
+                    if newly_available or newly_unavailable:
+                        logger.info(
+                            f'Court changes: +{len(newly_available)} available, -{len(newly_unavailable)} unavailable')
+                    logger.debug(f'Courts now available: {newly_available}')
+                    logger.debug(f'Courts now unavailable: {newly_unavailable}')
+
+                    # TODO: Publish changes
 
                 for (venue, booking_date), courts in grouped.items():
                     await self.cache.set(venue, booking_date, courts)
-
                 await self.cache.set_last_updated()
+
                 logger.info(f'Cached {len(grouped)} events')
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=CONFIG.polling.interval)
@@ -52,6 +72,15 @@ class CourtPoller:
 
     def stop(self) -> None:
         self._stop_event.set()
+
+    def _compute_diff(self, available: dict[str, Court]) -> tuple[frozenset[Court], frozenset[Court]]:
+        newly_available_keys = available.keys() - self._last_available.keys()
+        newly_unavailable_keys = self._last_available.keys() - available.keys()
+
+        newly_available = frozenset({available[key] for key in newly_available_keys})
+        newly_unavailable = frozenset({self._last_available[key] for key in newly_unavailable_keys})
+
+        return newly_available, newly_unavailable
 
     async def _fetch_all(self, session: aiohttp.ClientSession) -> list[Court]:
         logger.debug('Polling')
