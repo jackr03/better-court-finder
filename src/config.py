@@ -20,7 +20,7 @@ class RedisConfig:
 
 @dataclass(frozen=True)
 class Config:
-    logging_level = logging.INFO
+    logging_level = logging.DEBUG
     polling: PollingConfig = PollingConfig()
     redis: RedisConfig = RedisConfig()
 

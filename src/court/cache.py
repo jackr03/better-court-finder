@@ -16,15 +16,8 @@ class CourtCache:
     COURTS_PREFIX = f'{CONFIG.redis.namespace}:courts'
     LAST_UPDATED_KEY = f'{CONFIG.redis.namespace}:last-updated'
 
-    def __init__(self):
-        self.client = Redis(host=CONFIG.redis.host, port=CONFIG.redis.port, decode_responses=True)
-
-    async def connect(self) -> None:
-        await self.client.ping()
-        logger.info(f'Connected to Redis (host={CONFIG.redis.host}, port={CONFIG.redis.port})')
-
-    async def close(self) -> None:
-        await self.client.close()
+    def __init__(self, client: Redis):
+        self.client = client
 
     async def get(self, venue: Venue, booking_date: date) -> list[Court]:
         key = self._format_key(venue, booking_date)

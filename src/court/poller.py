@@ -7,6 +7,7 @@ import aiohttp
 
 from src.config import CONFIG
 from src.court.cache import CourtCache
+from src.court.publisher import CourtPublisher
 from src.models.activity import Activity
 from src.models.court import Court
 from src.models.venue import Venue
@@ -23,10 +24,11 @@ class CourtPoller:
         'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0.1 Safari/605.1.15'
     }
 
-    def __init__(self, cache: CourtCache) -> None:
+    def __init__(self, cache: CourtCache, publisher: CourtPublisher) -> None:
         self.cache = cache
+        self.publisher = publisher
         self._last_available: dict[str, Court] = {}
-        self._cold_start = False
+        self._cold_start = True
         self._stop_event = asyncio.Event()
 
     async def run(self) -> None:
@@ -58,13 +60,14 @@ class CourtPoller:
                     logger.debug(f'Courts now available: {newly_available}')
                     logger.debug(f'Courts now unavailable: {newly_unavailable}')
 
-                    # TODO: Publish changes
+                    await self.publisher.publish_changes(newly_available, newly_unavailable)
 
                 for (venue, booking_date), courts in grouped.items():
                     await self.cache.set(venue, booking_date, courts)
                 await self.cache.set_last_updated()
 
-                logger.info(f'Cached {len(grouped)} events')
+                logger.info(f'Cached {len(grouped)} venue-date groups')
+                logger.debug(f'Poll cycle complete, next in {CONFIG.polling.interval}s')
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=CONFIG.polling.interval)
                 except asyncio.TimeoutError:
@@ -83,8 +86,6 @@ class CourtPoller:
         return newly_available, newly_unavailable
 
     async def _fetch_all(self, session: aiohttp.ClientSession) -> list[Court]:
-        logger.debug('Polling')
-
         # Check the next 6 days for all courts
         dates = [(datetime.today() + timedelta(days=i)).date() for i in range(6)]
         args = [

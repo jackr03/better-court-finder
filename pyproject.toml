@@ -6,12 +6,8 @@ requires-python = ">=3.13"
 dependencies = [
     "aiogram>=3.20.0.post0",
     "aiohttp>=3.11.18",
-    "dotenv>=0.9.9",
-    "logging>=0.4.9.6",
     "pydantic>=2.11.4",
-    "pytest>=8.3.5",
+    "python-dotenv>=1.2.2",
     "redis>=7.4.0",
-    "requests>=2.32.3",
-    "requests-mock>=1.12.1",
     "toml>=0.10.2",
 ]
