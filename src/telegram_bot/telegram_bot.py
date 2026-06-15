@@ -10,15 +10,15 @@ logger = logging.getLogger(__name__)
 
 class TelegramBot:
 	def __init__(self, bot_token: str, cache: CourtCache):
-		self.bot = Bot(bot_token)
-		self.dp = Dispatcher()
-		self.dp['cache'] = cache
-		self.dp.include_router(router)
+		self._bot = Bot(bot_token)
+		self._dp = Dispatcher()
+		self._dp['cache'] = cache
+		self._dp.include_router(router)
 
 	async def run(self) -> None:
-		await self.bot.delete_webhook(drop_pending_updates=True)
+		await self._bot.delete_webhook(drop_pending_updates=True)
 		logger.info("Starting Telegram bot")
-		await self.dp.start_polling(self.bot, handle_signals=False)
+		await self._dp.start_polling(self._bot, handle_signals=False)
 
 	async def stop(self) -> None:
-		await self.bot.session.close()
+		await self._bot.session.close()

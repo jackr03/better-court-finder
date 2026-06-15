@@ -17,11 +17,11 @@ class CourtCache:
     LAST_UPDATED_KEY = f'{CONFIG.redis.namespace}:last-updated'
 
     def __init__(self, client: Redis):
-        self.client = client
+        self._client = client
 
     async def get(self, venue: Venue, booking_date: date) -> list[Court]:
         key = self._format_key(venue, booking_date)
-        value = await self.client.get(key)
+        value = await self._client.get(key)
         if value is None:
             logger.debug(f'Cache miss (key={key})')
             return []
@@ -31,15 +31,15 @@ class CourtCache:
     async def set(self, venue: Venue, booking_date: date, courts: list[Court]) -> None:
         key = self._format_key(venue, booking_date)
         value = json.dumps([court.to_dict() for court in courts])
-        await self.client.set(key, value, ex=CONFIG.redis.ttl)
+        await self._client.set(key, value, ex=CONFIG.redis.ttl)
         logger.debug(f'Cache set (key={key}, courts={len(courts)})')
 
     async def get_last_updated(self) -> datetime:
-        last_updated = await self.client.get(self.LAST_UPDATED_KEY)
+        last_updated = await self._client.get(self.LAST_UPDATED_KEY)
         return datetime.fromisoformat(last_updated)
 
     async def set_last_updated(self) -> None:
-        await self.client.set(self.LAST_UPDATED_KEY, datetime.isoformat(datetime.now()))
+        await self._client.set(self.LAST_UPDATED_KEY, datetime.isoformat(datetime.now()))
 
     async def get_all_available_courts(self) -> list[Court]:
         courts = await self._get_courts(f'{self.COURTS_PREFIX}:*')
@@ -58,8 +58,8 @@ class CourtCache:
         return [court for court in courts if court.spaces > 0]
 
     async def _get_courts(self, prefix: str) -> list[Court]:
-        keys = [key async for key in self.client.scan_iter(match=prefix)]
-        values = await self.client.mget(keys)
+        keys = [key async for key in self._client.scan_iter(match=prefix)]
+        values = await self._client.mget(keys)
         return [Court.from_dict(court) for value in values for court in json.loads(value)]
 
     def _format_key(self, venue: Venue, booking_date: date) -> str:

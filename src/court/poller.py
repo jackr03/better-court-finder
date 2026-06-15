@@ -25,10 +25,12 @@ class CourtPoller:
     }
 
     def __init__(self, cache: CourtCache, publisher: CourtPublisher) -> None:
-        self.cache = cache
-        self.publisher = publisher
+        self._cache = cache
+        self._publisher = publisher
+
         self._last_available: dict[str, Court] = {}
         self._cold_start = True
+
         self._stop_event = asyncio.Event()
 
     async def run(self) -> None:
@@ -60,11 +62,11 @@ class CourtPoller:
                     logger.debug(f'Courts now available: {newly_available}')
                     logger.debug(f'Courts now unavailable: {newly_unavailable}')
 
-                    await self.publisher.publish_changes(newly_available, newly_unavailable)
+                    await self._publisher.publish_changes(newly_available, newly_unavailable)
 
                 for (venue, booking_date), courts in grouped.items():
-                    await self.cache.set(venue, booking_date, courts)
-                await self.cache.set_last_updated()
+                    await self._cache.set(venue, booking_date, courts)
+                await self._cache.set_last_updated()
 
                 logger.info(f'Cached {len(grouped)} venue-date groups')
                 logger.debug(f'Poll cycle complete, next in {CONFIG.polling.interval}s')

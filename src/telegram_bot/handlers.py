@@ -18,7 +18,7 @@ from src.utils import format_date_and_time, format_date
 logger = logging.getLogger(__name__)
 router = Router()
 
-_PARSE_MODE = 'Markdown'
+PARSE_MODE = 'Markdown'
 
 
 def log_update(func: Callable):
@@ -175,7 +175,7 @@ async def _create_search_message(cache: CourtCache) -> tuple[str, InlineKeyboard
 	return (
 		Messages.SEARCH_PROMPT.format(last_updated=last_updated),
 		InlineKeyboardMarkup(inline_keyboard=Keyboards.SEARCH),
-		_PARSE_MODE
+		PARSE_MODE
 	)
 
 
@@ -192,7 +192,7 @@ async def _send_selection_message(
 	await callback_query.message.edit_text(
 		header.format(last_updated=last_updated),
 		reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-		parse_mode=_PARSE_MODE
+		parse_mode=PARSE_MODE
 	)
 
 
@@ -209,7 +209,7 @@ async def _handle_court_results(
 	await callback_query.message.edit_text(
 		message,
 		reply_markup=_create_back_button_keyboard(back_button) if back_button else None,
-		parse_mode=_PARSE_MODE
+		parse_mode=PARSE_MODE
 	)
 
 

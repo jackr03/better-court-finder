@@ -16,7 +16,7 @@ class CourtPublisher:
 	CHANNEL_PREFIX = f'{CONFIG.redis.namespace}:venues'
 
 	def __init__(self, client: Redis):
-		self.client = client
+		self._client = client
 
 	async def publish_changes(self, newly_available: frozenset[Court], newly_unavailable: frozenset[Court]) -> None:
 		await self._publish_courts(newly_available, CourtState.AVAILABLE)
@@ -30,11 +30,11 @@ class CourtPublisher:
 		for venue, venue_courts in grouped.items():
 			channel = f'{self.CHANNEL_PREFIX}:{venue.value}'
 			payload = json.dumps({
-				'state': state,
+				'state': state, # TODO: Will this throw an error?
 				'venue': venue.value,
 				'courts': [court.to_dict() for court in venue_courts]
 			})
-			receivers = await self.client.publish(channel, payload)
+			receivers = await self._client.publish(channel, payload)
 
 			if receivers == 0:
 				logger.warning(f'Published {state} to {channel} but no subscribers were listening')
