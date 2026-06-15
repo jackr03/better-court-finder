@@ -14,13 +14,13 @@ class PollingConfig:
 class RedisConfig:
     host: str = 'localhost'
     port: int = 6379
-    ttl: int = 330
+    ttl: int = 600 # 2x PollingConfig.interval lets us survive a failed cycle
     namespace: str = 'bcf'
 
 
 @dataclass(frozen=True)
 class Config:
-    logging_level = logging.DEBUG
+    logging_level = logging.INFO
     polling: PollingConfig = PollingConfig()
     redis: RedisConfig = RedisConfig()
 

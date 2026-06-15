@@ -30,8 +30,7 @@ class CourtPublisher:
 		for venue, venue_courts in grouped.items():
 			channel = f'{self.CHANNEL_PREFIX}:{venue.value}'
 			payload = json.dumps({
-				'state': state, # TODO: Will this throw an error?
-				'venue': venue.value,
+				'state': state,
 				'courts': [court.to_dict() for court in venue_courts]
 			})
 			receivers = await self._client.publish(channel, payload)
@@ -39,4 +38,4 @@ class CourtPublisher:
 			if receivers == 0:
 				logger.warning(f'Published {state} to {channel} but no subscribers were listening')
 			else:
-				logger.debug(f'Published {state} to {channel} ({len(courts)} courts) to {receivers} receivers')
+				logger.debug(f'Published {state} to {channel} ({len(venue_courts)} courts) to {receivers} receivers')

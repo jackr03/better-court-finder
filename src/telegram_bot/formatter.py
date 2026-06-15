@@ -3,6 +3,7 @@ from datetime import datetime
 
 from src.models.court import Court
 from src.models.venue import Venue
+from src.telegram_bot.constants import Messages
 from src.utils import format_date, format_time
 
 
@@ -14,18 +15,31 @@ def format_court_availability(courts: list[Court]) -> str:
         venue_blocks = []
         for venue, venue_courts in venues.items():
             venue_block = [f'📍 _{venue.display_name}_']
-            for court in venue_courts:
-                venue_block.append(f'⏱️ {court.starts_at.strftime("%H:%M")} - {court.ends_at.strftime("%H:%M")}: {court.spaces} spaces')
+            venue_block.extend(_format_slots(venue_courts))
             venue_blocks.append('\n'.join(venue_block))
         date_block = f'📅 *{format_date(d)}*\n' + '\n\n'.join(venue_blocks)
         date_blocks.append(date_block)
     return '\n\n'.join(date_blocks)
 
 
-def _format_slots(courts: list[Court]) -> list[str]:
+def format_court_notification(available: bool, venue: Venue, courts: list[Court])-> str:
+    status = Messages.COURTS_AVAILABLE if available else Messages.COURTS_UNAVAILABLE
+    header = f'*{status} at {venue.display_name}*'
+
+    grouped = _sort_and_group_courts(courts)
+    date_blocks = []
+    for d, venues in grouped.items():
+        venue_courts = venues[venue]
+        slots = _format_slots(venue_courts, include_spaces=False)
+        date_blocks.append(f'📅 _{format_date(d)}_\n' + '\n'.join(slots))
+
+    return header + '\n' + '\n\n'.join(date_blocks)
+
+
+def _format_slots(courts: list[Court], include_spaces: bool = True) -> list[str]:
     return [
-        f'⏱️ {format_time(c.starts_at)} - {format_time(c.ends_at)}: '
-        f'{c.spaces} space{'s' if c.spaces != 1 else ''}'
+        f'⏱️ {format_time(c.starts_at)} - {format_time(c.ends_at)}'
+        + (f': {c.spaces} space{'s' if c.spaces != 1 else ''}' if include_spaces else '')
         for c in courts
     ]
 

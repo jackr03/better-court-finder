@@ -31,13 +31,11 @@ class CourtPoller:
         self._last_available: dict[str, Court] = {}
         self._cold_start = True
 
-        self._stop_event = asyncio.Event()
-
     async def run(self) -> None:
         logger.info(f'Starting court poller')
         logger.debug(CONFIG.polling)
         async with aiohttp.ClientSession(headers=self.HEADERS) as session:
-            while not self._stop_event.is_set():
+            while True:
                 courts = await self._fetch_all(session)
 
                 # 1. Group by (venue, date) to store in Redis
@@ -71,12 +69,9 @@ class CourtPoller:
                 logger.info(f'Cached {len(grouped)} venue-date groups')
                 logger.debug(f'Poll cycle complete, next in {CONFIG.polling.interval}s')
                 try:
-                    await asyncio.wait_for(self._stop_event.wait(), timeout=CONFIG.polling.interval)
+                    await asyncio.sleep(CONFIG.polling.interval)
                 except asyncio.TimeoutError:
                     pass
-
-    def stop(self) -> None:
-        self._stop_event.set()
 
     def _compute_diff(self, available: dict[str, Court]) -> tuple[frozenset[Court], frozenset[Court]]:
         newly_available_keys = available.keys() - self._last_available.keys()

@@ -27,6 +27,8 @@ class Messages:
     SELECT_DATE = '🔍 Select a date:\n{last_updated}'
     SELECT_TIME = '🔍 Select a time:\n{last_updated}'
     SELECT_VENUE = '🔍 Select a venue:\n{last_updated}'
+    COURTS_AVAILABLE = '✅ Courts available'
+    COURTS_UNAVAILABLE = '❌ Courts unavailable'
 
 
 class Keyboards:
