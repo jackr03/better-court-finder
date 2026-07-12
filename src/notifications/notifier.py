@@ -4,11 +4,12 @@ from src.court.cache import CourtCache
 from src.court.subscriber import CourtSubscriber
 from src.models.court_event import CourtEvent
 from src.models.venue import Venue
+from src.notifications.store import NotificationStore
 
 
-# TODO: Needs to instantiated with a NotificationStore which we can grab user_ids from
 class Notifier(ABC):
-	def __init__(self, cache: CourtCache, subscriber: CourtSubscriber):
+	def __init__(self, notification_store: NotificationStore, cache: CourtCache, subscriber: CourtSubscriber):
+		self._notification_store = notification_store
 		self._cache = cache
 		self._subscriber = subscriber
 
@@ -19,13 +20,12 @@ class Notifier(ABC):
 		await self._subscriber.stop()
 
 	async def _on_event(self, venue: Venue, event: CourtEvent) -> None:
-		# TODO: Hardcoded right now
-		user_ids = []
+		user_ids = await self._notification_store.find_users_for_venue(venue)
 		message = self._format(venue, event)
 		await self._send(message, user_ids)
 
 	@abstractmethod
-	async def _send(self, message: str, user_ids: list[str]) -> None:
+	async def _send(self, message: str, user_ids: set[str]) -> None:
 		pass
 
 	@abstractmethod

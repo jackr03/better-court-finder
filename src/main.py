@@ -42,9 +42,9 @@ async def main():
 	poller = CourtPoller(cache, publisher)
 
 	bot = Bot(token=CONFIG.telegram.token)
-	telegram_bot = TelegramBot(bot, cache)
+	telegram_bot = TelegramBot(bot, notification_store, cache)
 	telegram_subscriber = CourtSubscriber(Platform.TELEGRAM, redis)
-	telegram_notifier = TelegramNotifier(cache, telegram_subscriber, bot)
+	telegram_notifier = TelegramNotifier(notification_store, cache, telegram_subscriber, bot)
 
 	poller_task = asyncio.create_task(poller.run())
 	telegram_bot_task = asyncio.create_task(telegram_bot.run())

@@ -2,6 +2,7 @@ from aiogram.types import InlineKeyboardButton
 
 from src.models.time_range import TimeRange
 from src.models.venue import Venue
+from src.telegram_bot.callbacks import SearchByTime, SearchByVenue
 
 
 class Commands:
@@ -10,15 +11,11 @@ class Commands:
     SEARCH_BY_DATE = 'search_by_date'
     SEARCH_BY_TIME = 'search_by_time'
     SEARCH_BY_VENUE = 'search_by_venue'
-
-
-class CallbackData:
-    DATE_PREFIX = 'search_by_date_'
-    TIME_PREFIX = 'search_by_time_'
-    VENUE_PREFIX = 'search_by_venue_'
+    NOTIFICATIONS = 'notifications'
 
 
 class Messages:
+    BACK = '⬅️ Back'
     NO_COURTS = '❌ No courts available.'
     NO_COURTS_FOR_DATE = '❌ No courts available for {date}.'
     NO_COURTS_FOR_TIME = '❌ No courts available in the {time_range}.'
@@ -29,9 +26,11 @@ class Messages:
     SELECT_VENUE = '🔍 Select a venue:\n{last_updated}'
     COURTS_AVAILABLE = '✅ Courts available'
     COURTS_UNAVAILABLE = '❌ Courts unavailable'
+    NOTIFICATIONS = '🔔 Choose venues to receive notifications for:'
 
 
 class Keyboards:
+    """A helper class containing only the static keyboards."""
     SEARCH = [
         [InlineKeyboardButton(text=text, callback_data=command)]
         for text, command in [
@@ -45,7 +44,7 @@ class Keyboards:
     TIME = [
         [InlineKeyboardButton(
             text=time_range.display_name,
-            callback_data=f'{CallbackData.TIME_PREFIX}{time_range.name}'
+            callback_data=SearchByTime(time_range=time_range.name).pack()
         )]
         for time_range in TimeRange
     ]
@@ -53,7 +52,7 @@ class Keyboards:
     VENUE = [
         [InlineKeyboardButton(
             text=f'📍 {venue.display_name}',
-            callback_data=f'{CallbackData.VENUE_PREFIX}{venue.value}'
+            callback_data=SearchByVenue(venue=venue.value).pack()
         )]
         for venue in Venue
     ]

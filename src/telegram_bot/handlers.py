@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, date
 from functools import wraps
 from typing import Callable
 
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -11,7 +11,9 @@ from src.court.cache import CourtCache
 from src.models.court import Court
 from src.models.time_range import TimeRange
 from src.models.venue import Venue
-from src.telegram_bot.constants import Commands, CallbackData, Messages, Keyboards
+from src.notifications.store import NotificationStore
+from src.telegram_bot.callbacks import SearchByDate, SearchByTime, SearchByVenue, ToggleNotification
+from src.telegram_bot.constants import Commands, Messages, Keyboards
 from src.telegram_bot.formatter import format_court_availability
 from src.utils import format_date_and_time, format_date
 
@@ -32,29 +34,31 @@ def log_update(func: Callable):
 	return wrapper
 
 
+# region Search Command
 @router.message(Command(Commands.SEARCH))
 @log_update
 async def search_command(message: Message, cache: CourtCache):
 	text, keyboard, parse_mode = await _create_search_message(cache)
 	await message.answer(
-		text,
+		text=text,
 		reply_markup=keyboard,
 		parse_mode=parse_mode
 	)
 
 
-@router.callback_query(lambda c: c.data == Commands.SEARCH)
+@router.callback_query(F.data == Commands.SEARCH)
 @log_update
 async def search_callback(callback_query: CallbackQuery, cache: CourtCache):
 	text, keyboard, parse_mode = await _create_search_message(cache)
 	await callback_query.message.edit_text(
-		text,
+		text=text,
 		reply_markup=keyboard,
 		parse_mode=parse_mode
 	)
+	await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == Commands.SEARCH_ALL)
+@router.callback_query(F.data == Commands.SEARCH_ALL)
 @log_update
 async def search_all_callback(callback_query: CallbackQuery, cache: CourtCache):
 	courts = await cache.get_all_available_courts()
@@ -67,14 +71,14 @@ async def search_all_callback(callback_query: CallbackQuery, cache: CourtCache):
 	)
 
 
-@router.callback_query(lambda c: c.data == Commands.SEARCH_BY_DATE)
+@router.callback_query(F.data == Commands.SEARCH_BY_DATE)
 @log_update
 async def search_by_date_callback(callback_query: CallbackQuery, cache: CourtCache):
 	dates = [(datetime.today() + timedelta(days=i)).date() for i in range(6)]
 	keyboard_buttons = [
 		[InlineKeyboardButton(
 			text=f'📅 {format_date(d)}',
-			callback_data=f'{CallbackData.DATE_PREFIX}{d.isoformat()}'
+			callback_data=SearchByDate(date=d.isoformat()).pack()
 		)] for d in dates
 	]
 
@@ -87,10 +91,10 @@ async def search_by_date_callback(callback_query: CallbackQuery, cache: CourtCac
 	)
 
 
-@router.callback_query(lambda c: c.data.startswith(CallbackData.DATE_PREFIX))
+@router.callback_query(SearchByDate.filter())
 @log_update
-async def search_by_date_selected_callback(callback_query: CallbackQuery, cache: CourtCache):
-	search_date = date.fromisoformat(_get_callback_data(callback_query, CallbackData.DATE_PREFIX))
+async def search_by_date_selected_callback(callback_query: CallbackQuery, callback_data: SearchByDate, cache: CourtCache):
+	search_date = date.fromisoformat(callback_data.date)
 	courts = await cache.get_available_by_date(search_date)
 
 	await _handle_court_results(
@@ -101,7 +105,7 @@ async def search_by_date_selected_callback(callback_query: CallbackQuery, cache:
 	)
 
 
-@router.callback_query(lambda c: c.data == Commands.SEARCH_BY_TIME)
+@router.callback_query(F.data == Commands.SEARCH_BY_TIME)
 @log_update
 async def search_by_time_callback(callback_query: CallbackQuery, cache: CourtCache):
 	await _send_selection_message(
@@ -113,10 +117,10 @@ async def search_by_time_callback(callback_query: CallbackQuery, cache: CourtCac
 	)
 
 
-@router.callback_query(lambda c: c.data.startswith(CallbackData.TIME_PREFIX))
+@router.callback_query(SearchByTime.filter())
 @log_update
-async def search_by_time_selected_callback(callback_query: CallbackQuery, cache: CourtCache):
-	time_range = TimeRange[_get_callback_data(callback_query, CallbackData.TIME_PREFIX)]
+async def search_by_time_selected_callback(callback_query: CallbackQuery, callback_data: SearchByTime, cache: CourtCache):
+	time_range = TimeRange[callback_data.time_range]
 	courts = await cache.get_available_by_time_range(time_range)
 
 	await _handle_court_results(
@@ -127,7 +131,7 @@ async def search_by_time_selected_callback(callback_query: CallbackQuery, cache:
 	)
 
 
-@router.callback_query(lambda c: c.data == Commands.SEARCH_BY_VENUE)
+@router.callback_query(F.data == Commands.SEARCH_BY_VENUE)
 @log_update
 async def search_by_venue_callback(callback_query: CallbackQuery, cache: CourtCache):
 	await _send_selection_message(
@@ -139,10 +143,10 @@ async def search_by_venue_callback(callback_query: CallbackQuery, cache: CourtCa
 	)
 
 
-@router.callback_query(lambda c: c.data.startswith(CallbackData.VENUE_PREFIX))
+@router.callback_query(SearchByVenue.filter())
 @log_update
-async def search_by_venue_selected_callback(callback_query: CallbackQuery, cache: CourtCache):
-	venue = Venue(_get_callback_data(callback_query, CallbackData.VENUE_PREFIX))
+async def search_by_venue_selected_callback(callback_query: CallbackQuery, callback_data: SearchByVenue, cache: CourtCache):
+	venue = Venue(callback_data.venue)
 	courts = await cache.get_available_by_venue(venue)
 
 	await _handle_court_results(
@@ -151,23 +155,6 @@ async def search_by_venue_selected_callback(callback_query: CallbackQuery, cache
 		Messages.NO_COURTS_FOR_VENUE.format(venue=venue.display_name),
 		Commands.SEARCH_BY_VENUE
 	)
-
-
-def _create_back_button_keyboard(callback_data: str) -> InlineKeyboardMarkup:
-	return InlineKeyboardMarkup(inline_keyboard=[
-		[_create_back_button(callback_data)]
-	])
-
-
-def _create_back_button(callback_data: str) -> InlineKeyboardButton:
-	return InlineKeyboardButton(
-		text='⬅️ Back',
-		callback_data=callback_data
-	)
-
-
-def _get_callback_data(callback_query: CallbackQuery, prefix: str) -> str:
-	return callback_query.data[len(prefix):]
 
 
 async def _create_search_message(cache: CourtCache) -> tuple[str, InlineKeyboardMarkup, str]:
@@ -194,6 +181,7 @@ async def _send_selection_message(
 		reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
 		parse_mode=PARSE_MODE
 	)
+	await callback_query.answer()
 
 
 async def _handle_court_results(
@@ -207,9 +195,23 @@ async def _handle_court_results(
 	else:
 		message = empty_message
 	await callback_query.message.edit_text(
-		message,
+		text=message,
 		reply_markup=_create_back_button_keyboard(back_button) if back_button else None,
 		parse_mode=PARSE_MODE
+	)
+	await callback_query.answer()
+
+
+def _create_back_button_keyboard(callback_data: str) -> InlineKeyboardMarkup:
+	return InlineKeyboardMarkup(inline_keyboard=[
+		[_create_back_button(callback_data)]
+	])
+
+
+def _create_back_button(callback_data: str) -> InlineKeyboardButton:
+	return InlineKeyboardButton(
+		text=Messages.BACK,
+		callback_data=callback_data
 	)
 
 
@@ -217,3 +219,44 @@ async def _get_last_updated(cache: CourtCache) -> str:
 	last_updated = await cache.get_last_updated()
 	formatted_last_updated = format_date_and_time(last_updated)
 	return f'_Last updated: {formatted_last_updated}_' if last_updated else 'Never'
+# endregion
+
+# region Notifications Command
+@router.message(Command(Commands.NOTIFICATIONS))
+@log_update
+async def notifications_command(message: Message, notification_store: NotificationStore):
+	subscribed_venues = await notification_store.find_venues_for_user(message.from_user.id)
+	keyboard = await _create_notifications_keyboard(subscribed_venues)
+
+	await message.answer(
+		text=Messages.NOTIFICATIONS,
+		reply_markup=keyboard,
+		parse_mode=PARSE_MODE
+	)
+
+
+@router.callback_query(ToggleNotification.filter())
+@log_update
+async def toggle_notification_callback(callback_query: CallbackQuery, callback_data: ToggleNotification, notification_store: NotificationStore):
+	await notification_store.toggle_subscription(callback_query.from_user.id, Venue(callback_data.venue))
+
+	subscribed_venues = await notification_store.find_venues_for_user(callback_query.from_user.id)
+	keyboard = await _create_notifications_keyboard(subscribed_venues)
+
+	await callback_query.message.edit_text(
+		text=Messages.NOTIFICATIONS,
+		reply_markup=keyboard,
+		parse_mode=PARSE_MODE
+	)
+	await callback_query.answer()
+
+
+async def _create_notifications_keyboard(subscribed_venues: set[Venue]) -> InlineKeyboardMarkup:
+	return InlineKeyboardMarkup(inline_keyboard=[
+		[InlineKeyboardButton(
+			text=f'{'🟢' if venue in subscribed_venues else '⚪'} {venue.display_name}',
+			callback_data=ToggleNotification(venue=venue).pack()
+		)]
+		for venue in Venue
+	])
+# endregion
