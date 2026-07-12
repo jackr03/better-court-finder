@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 
 from aiogram import Bot
 from dotenv import load_dotenv
@@ -12,6 +11,7 @@ from src.court.poller import CourtPoller
 from src.court.publisher import CourtPublisher
 from src.court.subscriber import CourtSubscriber
 from src.models.platform import Platform
+from src.notifications.store import NotificationStore
 from src.telegram_bot.bot import TelegramBot
 from src.telegram_bot.notifier import TelegramNotifier
 
@@ -24,17 +24,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 async def main():
-	client = Redis(host=CONFIG.redis.host, port=CONFIG.redis.port, decode_responses=True)
-	await client.ping()
+	redis = Redis(host=CONFIG.redis.host,
+				  port=CONFIG.redis.port,
+				  decode_responses=True)
+	await redis.ping()
 	logger.info(f'Connected to Redis (host={CONFIG.redis.host}, port={CONFIG.redis.port})')
 
-	cache = CourtCache(client)
-	publisher = CourtPublisher(client)
+	notification_store = NotificationStore(user=CONFIG.postgres.user,
+										   password=CONFIG.postgres.password,
+										   database=CONFIG.postgres.database,
+										   host=CONFIG.postgres.host,
+										   port=CONFIG.postgres.port)
+	await notification_store.connect()
+
+	cache = CourtCache(redis)
+	publisher = CourtPublisher(redis)
 	poller = CourtPoller(cache, publisher)
 
-	bot = Bot(os.getenv('BOT_TOKEN'))
+	bot = Bot(token=CONFIG.telegram.token)
 	telegram_bot = TelegramBot(bot, cache)
-	telegram_subscriber = CourtSubscriber(Platform.TELEGRAM, client)
+	telegram_subscriber = CourtSubscriber(Platform.TELEGRAM, redis)
 	telegram_notifier = TelegramNotifier(cache, telegram_subscriber, bot)
 
 	poller_task = asyncio.create_task(poller.run())
@@ -56,7 +65,8 @@ async def main():
 
 		await telegram_notifier.stop()
 		await bot.session.close()
-		await client.aclose()
+		await notification_store.close()
+		await redis.aclose()
 
 
 if __name__ == '__main__':
