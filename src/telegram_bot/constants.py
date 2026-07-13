@@ -11,11 +11,13 @@ class Commands:
     SEARCH_BY_DATE = 'search_by_date'
     SEARCH_BY_TIME = 'search_by_time'
     SEARCH_BY_VENUE = 'search_by_venue'
+    CLOSE = 'close'
     NOTIFICATIONS = 'notifications'
 
 
 class Messages:
     BACK = '⬅️ Back'
+    CLOSE = '❌ Close'
     NO_COURTS = '❌ No courts available.'
     NO_COURTS_FOR_DATE = '❌ No courts available for {date}.'
     NO_COURTS_FOR_TIME = '❌ No courts available in the {time_range}.'

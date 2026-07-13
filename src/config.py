@@ -42,6 +42,7 @@ def _load_postgres_config() -> PostgresConfig:
 @dataclass(frozen=True)
 class TelegramConfig:
     token: str
+    multi_message_delay: float = 0.075
 
 
 def _load_telegram_config() -> TelegramConfig:

@@ -1,6 +1,7 @@
 import logging
 
 from aiogram import Bot, Dispatcher
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from src.court.cache import CourtCache
 from src.notifications.store import NotificationStore
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 class TelegramBot:
 	def __init__(self, bot: Bot, notification_store: NotificationStore, cache: CourtCache):
 		self._bot = bot
-		self._dp = Dispatcher()
+		self._dp = Dispatcher(storage=MemoryStorage())
 		self._dp['cache'] = cache
 		self._dp['notification_store'] = notification_store
 		self._dp.include_router(router)

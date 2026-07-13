@@ -2,6 +2,8 @@ import asyncio
 import logging
 
 from aiogram import Bot
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 from redis.asyncio import Redis
 
@@ -41,7 +43,7 @@ async def main():
 	publisher = CourtPublisher(redis)
 	poller = CourtPoller(cache, publisher)
 
-	bot = Bot(token=CONFIG.telegram.token)
+	bot = Bot(token=CONFIG.telegram.token, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
 	telegram_bot = TelegramBot(bot, notification_store, cache)
 	telegram_subscriber = CourtSubscriber(Platform.TELEGRAM, redis)
 	telegram_notifier = TelegramNotifier(notification_store, cache, telegram_subscriber, bot)
