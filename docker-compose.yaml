@@ -18,10 +18,26 @@ services:
       - pgdata:/var/lib/postgresql
       - ./db:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bcf"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  bot:
+    build: .
+    container_name: bot
+    env_file: .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    profiles: ["bot"]
 
 volumes:
   pgdata:

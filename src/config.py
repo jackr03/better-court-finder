@@ -16,10 +16,17 @@ class PollingConfig:
 
 @dataclass(frozen=True)
 class RedisConfig:
-    host: str = 'localhost'
-    port: int = 6379
-    ttl: int = 600 # 2x PollingConfig.interval lets us survive a failed cycle
+    host: str
+    port: int
     namespace: str = 'bcf'
+    ttl: int = 600 # 2x PollingConfig.interval lets us survive a failed cycle
+
+
+def _load_redis_config() -> RedisConfig:
+    return RedisConfig(
+        host=os.getenv('REDIS_HOST', 'localhost'),
+        port=int(os.getenv('REDIS_PORT', 6379))
+    )
 
 
 @dataclass(frozen=True)
@@ -27,15 +34,17 @@ class PostgresConfig:
     user: str
     password: str
     database: str
-    host: str = 'localhost'
-    port: int = 5432
+    host: str
+    port: int
 
 
 def _load_postgres_config() -> PostgresConfig:
     return PostgresConfig(
         user=os.environ['POSTGRES_USER'],
         password=os.environ['POSTGRES_PASSWORD'],
-        database=os.environ['POSTGRES_DB']
+        database=os.environ['POSTGRES_DB'],
+        host=os.getenv('POSTGRES_HOST', 'localhost'),
+        port=int(os.getenv('POSTGRES_PORT', 5432))
     )
 
 
@@ -55,7 +64,7 @@ def _load_telegram_config() -> TelegramConfig:
 class Config:
     logging_level = logging.INFO
     polling: PollingConfig = PollingConfig()
-    redis: RedisConfig = RedisConfig()
+    redis: RedisConfig = _load_redis_config()
     postgres: PostgresConfig = _load_postgres_config()
     telegram: TelegramConfig = _load_telegram_config()
 
