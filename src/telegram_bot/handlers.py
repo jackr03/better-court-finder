@@ -175,6 +175,7 @@ async def search_by_venue_selected_callback(
 		state,
 		courts,
 		Messages.NO_COURTS_FOR_VENUE.format(venue=venue.display_name),
+		for_venue=True
 	)
 
 
@@ -208,9 +209,10 @@ async def _handle_court_results(
 		state: FSMContext,
 		courts: list[Court],
 		empty_message: str,
+		for_venue: bool = False
 ) -> None:
 	if courts:
-		message = format_court_availability(courts)
+		message = format_court_availability(courts, for_venue)
 	else:
 		message = empty_message
 
@@ -285,7 +287,7 @@ async def close_callback(callback_query: CallbackQuery, state: FSMContext) -> No
 	await _delete_stored_messages(callback_query, state)
 
 	# KNOWN BUG: close button only handles the latest set of results, since context is overwritten
-	# Too muche effort to fix the issue fully, so as a compromise always delete the message close was pressed on at least
+	# Too much effort to fix the issue fully, so as a compromise always delete the message close was pressed on at least
 	try:
 		await callback_query.message.delete()
 	except TelegramBadRequest:

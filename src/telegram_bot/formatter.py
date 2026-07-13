@@ -7,19 +7,31 @@ from src.telegram_bot.constants import Messages
 from src.utils import format_date, format_time
 
 
-def format_court_availability(courts: list[Court]) -> str:
+def format_court_availability(courts: list[Court], for_venue: bool) -> str:
+    """
+    Format court availability, grouped by date.
+
+    If for_venue, all courts must share one venue.
+    Venue name is rendered once as a header rather than per section.
+    """
     grouped = _sort_and_group_courts(courts)
 
     date_blocks = []
     for d, venues in grouped.items():
         venue_blocks = []
         for venue, venue_courts in venues.items():
-            venue_block = [f'📍 _{venue.display_name}_']
+            venue_block = [] if for_venue else [f'📍 _{venue.display_name}_']
             venue_block.extend(_format_slots(venue_courts))
             venue_blocks.append('\n'.join(venue_block))
         date_block = f'📅 *{format_date(d)}*\n' + '\n\n'.join(venue_blocks)
         date_blocks.append(date_block)
-    return '\n\n'.join(date_blocks)
+
+    body = '\n\n'.join(date_blocks)
+
+    if for_venue:
+        header = f'📍 *{courts[0].venue.display_name}*'
+        return f'{header}\n\n{body}'
+    return body
 
 
 def format_court_notification(available: bool, venue: Venue, courts: list[Court])-> str:
