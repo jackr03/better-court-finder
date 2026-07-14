@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from src.models.venue import Venue
+
 load_dotenv()
 
 @dataclass(frozen=True)
@@ -49,6 +51,25 @@ def _load_postgres_config() -> PostgresConfig:
 
 
 @dataclass(frozen=True)
+class DiscordConfig:
+    webhooks: dict[Venue, str]
+    backoff_delay: float = 1.0
+    max_retries: int = 3
+
+
+def _load_discord_config() -> DiscordConfig:
+    webhooks = {}
+    for venue in Venue:
+        url = os.getenv(f'DISCORD_WEBHOOK_{venue.name}')
+        if url:
+            webhooks[venue] = url
+
+    return DiscordConfig(
+        webhooks=webhooks
+    )
+
+
+@dataclass(frozen=True)
 class TelegramConfig:
     token: str
     multi_message_delay: float = 0.075
@@ -62,10 +83,11 @@ def _load_telegram_config() -> TelegramConfig:
 
 @dataclass(frozen=True)
 class Config:
-    logging_level = logging.INFO
+    logging_level: int = logging.INFO
     polling: PollingConfig = PollingConfig()
     redis: RedisConfig = _load_redis_config()
     postgres: PostgresConfig = _load_postgres_config()
+    discord: DiscordConfig = _load_discord_config()
     telegram: TelegramConfig = _load_telegram_config()
 
 

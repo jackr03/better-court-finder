@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import random
 from datetime import date, datetime, timedelta
 
 import aiohttp
@@ -11,6 +10,7 @@ from src.court.publisher import CourtPublisher
 from src.models.activity import Activity
 from src.models.court import Court
 from src.models.venue import Venue
+from src.utils import get_backoff_delay
 
 logger = logging.getLogger(__name__)
 
@@ -107,23 +107,23 @@ class CourtPoller:
                 async with session.get(
                     self.API_URL.format(venue=venue, activity=activity),
                     params={'date': booking_date.isoformat()}
-                ) as response:
+                ) as resp:
                     # Retry with exponential backoff + jitter
-                    if response.status == 429 or response.status >= 500:
+                    if resp.status == 429 or resp.status >= 500:
                         if attempt < CONFIG.polling.max_retries:
-                            delay = self._get_backoff_delay(attempt)
-                            logger.warning(f'Retrying in {delay:.1f}s (status={response.status}, attempt={attempt}, venue={venue}, activity={activity}, booking_date={booking_date})')
+                            delay = get_backoff_delay(CONFIG.polling.base_delay, attempt)
+                            logger.warning(f'Retrying in {delay:.1f}s (status={resp.status}, attempt={attempt}, venue={venue}, activity={activity}, booking_date={booking_date})')
                             await asyncio.sleep(delay)
                             continue
-                        logger.error(f'Max retries exceeded (status={response.status}, venue={venue}, activity={activity}, booking_date={booking_date})')
+                        logger.error(f'Max retries exceeded (status={resp.status}, venue={venue}, activity={activity}, booking_date={booking_date})')
                         return []
 
-                    response.raise_for_status()
-                    data = (await response.json())['data']
+                    resp.raise_for_status()
+                    data = (await resp.json())['data']
                     return [Court.from_api(court) for court in data]
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 if attempt < CONFIG.polling.max_retries:
-                    delay = self._get_backoff_delay(attempt)
+                    delay = get_backoff_delay(CONFIG.polling.base_delay, attempt)
                     logger.warning(f'Retrying in {delay:.1f}s (attempt={attempt}, venue={venue}, activity={activity}, booking_date={booking_date})')
                     await asyncio.sleep(delay)
                     continue
@@ -131,9 +131,3 @@ class CourtPoller:
                 return []
 
         return []
-
-    @staticmethod
-    def _get_backoff_delay(attempt: int) -> float:
-        """Get delay with exponential backoff and equal jitter."""
-        exponential_delay = CONFIG.polling.base_delay * (2 ** attempt)
-        return exponential_delay / 2 + random.uniform(0, exponential_delay / 2)

@@ -1,3 +1,4 @@
+import random
 from datetime import datetime, date, time
 
 
@@ -16,3 +17,9 @@ def format_date(d: date) -> str:
 
 def format_date_and_time(d: datetime) -> str:
     return d.strftime(DATE_AND_TIME_FORMAT)
+
+
+def get_backoff_delay(base_delay: float, attempt: int) -> float:
+    """Get delay with exponential backoff and equal jitter."""
+    exponential_delay = base_delay * (2 ** attempt)
+    return exponential_delay / 2 + random.uniform(0, exponential_delay / 2)

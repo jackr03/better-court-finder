@@ -3,7 +3,7 @@ from datetime import datetime
 
 from src.models.court import Court
 from src.models.venue import Venue
-from src.telegram_bot.constants import Messages
+from src.telegram.constants import Messages
 from src.utils import format_date, format_time
 
 
@@ -34,7 +34,21 @@ def format_court_availability(courts: list[Court], for_venue: bool) -> str:
     return body
 
 
-def format_court_notification(available: bool, venue: Venue, courts: list[Court])-> str:
+def format_court_notification_discord(available: bool, venue: Venue, courts: list[Court])-> str:
+    status = Messages.COURTS_AVAILABLE if available else Messages.COURTS_UNAVAILABLE
+    header = f'**{status} at {venue.display_name}**'
+
+    grouped = _sort_and_group_courts(courts)
+    date_blocks = []
+    for d, venues in grouped.items():
+        venue_courts = venues[venue]
+        slots = _format_slots(venue_courts, include_spaces=False)
+        date_blocks.append(f'📅 *{format_date(d)}*\n' + '\n'.join(slots))
+
+    return header + '\n' + '\n\n'.join(date_blocks)
+
+
+def format_court_notification_telegram(available: bool, venue: Venue, courts: list[Court])-> str:
     status = Messages.COURTS_AVAILABLE if available else Messages.COURTS_UNAVAILABLE
     header = f'*{status} at {venue.display_name}*'
 

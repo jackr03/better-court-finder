@@ -2,7 +2,7 @@ from aiogram.types import InlineKeyboardButton
 
 from src.models.time_range import TimeRange
 from src.models.venue import Venue
-from src.telegram_bot.callbacks import SearchByTime, SearchByVenue
+from src.telegram.callbacks import SearchByTime, SearchByVenue
 
 
 class Commands:

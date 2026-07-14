@@ -16,9 +16,9 @@ from src.models.court import Court
 from src.models.time_range import TimeRange
 from src.models.venue import Venue
 from src.notifications.store import NotificationStore
-from src.telegram_bot.callbacks import SearchByDate, SearchByTime, SearchByVenue, ToggleNotification
-from src.telegram_bot.constants import Commands, Messages, Keyboards
-from src.telegram_bot.formatter import format_court_availability
+from src.telegram.callbacks import SearchByDate, SearchByTime, SearchByVenue, ToggleNotification
+from src.telegram.constants import Commands, Messages, Keyboards
+from src.telegram.formatter import format_court_availability
 from src.utils import format_date_and_time, format_date
 
 logger = logging.getLogger(__name__)

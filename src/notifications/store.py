@@ -60,6 +60,15 @@ class NotificationStore:
 			user_id, venue
 		)
 
+	async def unsubscribe_all(self, user_id) -> None:
+		await self._pool.execute(
+			'''
+			DELETE FROM subscriptions
+			WHERE user_id = $1
+			''',
+			user_id
+		)
+
 	async def find_venues_for_user(self, user_id) -> set[Venue]:
 		rows = await self._pool.fetch(
 			'''

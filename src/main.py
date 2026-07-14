@@ -4,7 +4,6 @@ import logging
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from dotenv import load_dotenv
 from redis.asyncio import Redis
 
 from src.config import CONFIG
@@ -12,12 +11,12 @@ from src.court.cache import CourtCache
 from src.court.poller import CourtPoller
 from src.court.publisher import CourtPublisher
 from src.court.subscriber import CourtSubscriber
-from src.models.platform import Platform
+from src.discord.notifier import DiscordNotifier
+from src.models.venue import Venue
 from src.notifications.store import NotificationStore
-from src.telegram_bot.bot import TelegramBot
-from src.telegram_bot.notifier import TelegramNotifier
+from src.telegram.bot import TelegramBot
+from src.telegram.notifier import TelegramNotifier
 
-load_dotenv()
 logging.basicConfig(
 	level=CONFIG.logging_level,
 	format='%(asctime)s [%(levelname)s] [%(name)s] %(message)s',
@@ -43,20 +42,33 @@ async def main():
 	publisher = CourtPublisher(redis)
 	poller = CourtPoller(cache, publisher)
 
-	bot = Bot(token=CONFIG.telegram.token, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
-	telegram_bot = TelegramBot(bot, notification_store, cache)
-	telegram_subscriber = CourtSubscriber(Platform.TELEGRAM, redis)
-	telegram_notifier = TelegramNotifier(notification_store, cache, telegram_subscriber, bot)
+	# Discord
+	# Log any venues that are disabled for Discord
+	disabled = [v.name for v in Venue if v not in CONFIG.discord.webhooks.keys()]
+	if disabled:
+		logger.warning(f'Discord notifications disabled for %s', ', '.join(disabled))
 
+	discord_subscriber = CourtSubscriber(redis)
+	discord_notifier = DiscordNotifier(discord_subscriber, CONFIG.discord.webhooks)
+
+	# Telegram
+	aiogram_bot = Bot(token=CONFIG.telegram.token, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
+	telegram_bot = TelegramBot(aiogram_bot, notification_store, cache)
+	telegram_subscriber = CourtSubscriber(redis)
+	telegram_notifier = TelegramNotifier(telegram_subscriber, notification_store, aiogram_bot)
+
+	# Tasks
 	poller_task = asyncio.create_task(poller.run())
+	discord_notifier_task = asyncio.create_task(discord_notifier.run())
 	telegram_bot_task = asyncio.create_task(telegram_bot.run())
 	telegram_notifier_task = asyncio.create_task(telegram_notifier.run())
 
-	tasks = [poller_task, telegram_bot_task, telegram_notifier_task]
+	notifiers = [discord_notifier, telegram_notifier]
+	tasks = [poller_task, discord_notifier_task, telegram_bot_task, telegram_notifier_task]
 
 	try:
 		await asyncio.gather(*tasks)
-	except (asyncio.CancelledError, KeyboardInterrupt):
+	except asyncio.CancelledError:
 		pass
 	finally:
 		logger.info('Shutting down')
@@ -65,8 +77,10 @@ async def main():
 			task.cancel()
 		await asyncio.gather(*tasks, return_exceptions=True)
 
-		await telegram_notifier.stop()
-		await bot.session.close()
+		for notifier in notifiers:
+			await notifier.stop()
+
+		await aiogram_bot.session.close()
 		await notification_store.close()
 		await redis.aclose()
 

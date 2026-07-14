@@ -5,7 +5,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from src.court.cache import CourtCache
 from src.notifications.store import NotificationStore
-from src.telegram_bot.handlers import router
+from src.telegram.handlers import router
 
 logger = logging.getLogger(__name__)
 
