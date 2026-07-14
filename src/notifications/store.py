@@ -90,7 +90,7 @@ class NotificationStore:
 		logger.debug('Found venues: %s for user %s', results, user_id)
 		return results
 
-	async def find_users_for_venue(self, venue: Venue) -> set[str]:
+	async def find_users_for_venue(self, venue: Venue) -> set[int]:
 		rows = await self._pool.fetch(
 			'''
 			SELECT user_id FROM subscriptions
