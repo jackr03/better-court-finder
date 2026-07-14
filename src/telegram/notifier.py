@@ -37,7 +37,7 @@ class TelegramNotifier(Notifier):
 				await self._notification_store.unsubscribe_all(user_id)
 			except TelegramRetryAfter as e:
 				# Rate limited
-				logger.info('Rate limited, retrying user %s after %ss', user_id, e.retry_after)
+				logger.warning('Rate limited, retrying user %s after %ss', user_id, e.retry_after)
 				await asyncio.sleep(e.retry_after)
 				try:
 					await self._bot.send_message(chat_id=user_id,text=message)
@@ -46,4 +46,4 @@ class TelegramNotifier(Notifier):
 			except TelegramAPIError:
 				logger.exception('Failed to notify user: %s', user_id)
 
-		logger.info('Notified %d/%d subscribers for %s', sent, len(user_ids), venue)
+		logger.info('Notified %d/%d user(s) for %s', sent, len(user_ids), venue)

@@ -31,9 +31,9 @@ def log_update(func: Callable):
 	@wraps(func)
 	async def wrapper(update: Message | CallbackQuery, *args, **kwargs):
 		if isinstance(update, Message):
-			logger.info(f'Received command: {update.text} from user {update.from_user.id}')
+			logger.debug('Received command: %s from user %s', update.text, update.from_user.id)
 		elif isinstance(update, CallbackQuery):
-			logger.info(f'Received callback query: {update.data} from user {update.from_user.id}')
+			logger.debug('Received callback query: %s from user %s', update.data, update.from_user.id)
 		return await func(update, *args, **kwargs)
 	return wrapper
 
@@ -308,7 +308,7 @@ async def _delete_stored_messages(callback_query: CallbackQuery, state: FSMConte
 	)
 	for message_id, result in zip(message_ids, results):
 		if isinstance(result, Exception):
-			logger.warning(f'Failed to delete message {message_id}: {result}')
+			logger.warning('Failed to delete message %s: %s', message_id, result)
 
 	await state.update_data(message_ids=[])
 

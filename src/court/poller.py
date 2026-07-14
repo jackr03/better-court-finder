@@ -32,7 +32,7 @@ class CourtPoller:
         self._cold_start = True
 
     async def run(self) -> None:
-        logger.info(f'Starting court poller')
+        logger.info('Starting court poller')
         logger.debug(CONFIG.polling)
         async with aiohttp.ClientSession(headers=self.HEADERS) as session:
             while True:
@@ -56,9 +56,10 @@ class CourtPoller:
                 else:
                     if newly_available or newly_unavailable:
                         logger.info(
-                            f'Court changes: +{len(newly_available)} available, -{len(newly_unavailable)} unavailable')
-                    logger.debug(f'Courts now available: {newly_available}')
-                    logger.debug(f'Courts now unavailable: {newly_unavailable}')
+                            'Court changes: +%d available, -%d unavailable',
+                            len(newly_available), len(newly_unavailable))
+                    logger.debug('Courts now available: %s', newly_available)
+                    logger.debug('Courts now unavailable: %s', newly_unavailable)
 
                     await self._publisher.publish_changes(newly_available, newly_unavailable)
 
@@ -66,8 +67,8 @@ class CourtPoller:
                     await self._cache.set(venue, booking_date, courts)
                 await self._cache.set_last_updated()
 
-                logger.info(f'Cached {len(grouped)} venue-date groups')
-                logger.debug(f'Poll cycle complete, next in {CONFIG.polling.interval}s')
+                logger.info('Cached %d venue-date groups', len(grouped))
+                logger.debug('Poll cycle complete, next in %ss', CONFIG.polling.interval)
                 try:
                     await asyncio.sleep(CONFIG.polling.interval)
                 except asyncio.TimeoutError:
@@ -99,23 +100,35 @@ class CourtPoller:
         results = await asyncio.gather(*[fetch_one(venue, activity, booking_date) for venue, activity, booking_date in args])
         return [court for batch in results for court in batch]
 
-    async def _fetch(self, session: aiohttp.ClientSession, venue: Venue, activity: Activity, booking_date: date) -> list[Court]:
-        logger.debug(f'Fetching (venue={venue}, activity={activity}, booking_date={booking_date})')
+    async def _fetch(
+            self,
+            session: aiohttp.ClientSession,
+            venue: Venue,
+            activity: Activity,
+            booking_date: date,
+    ) -> list[Court]:
+        logger.debug('Fetching (venue=%s, activity=%s, booking_date=%s)', venue, activity, booking_date)
 
         for attempt in range(0, CONFIG.polling.max_retries + 1):
             try:
                 async with session.get(
-                    self.API_URL.format(venue=venue, activity=activity),
-                    params={'date': booking_date.isoformat()}
+                        self.API_URL.format(venue=venue, activity=activity),
+                        params={'date': booking_date.isoformat()}
                 ) as resp:
                     # Retry with exponential backoff + jitter
                     if resp.status == 429 or resp.status >= 500:
                         if attempt < CONFIG.polling.max_retries:
                             delay = get_backoff_delay(CONFIG.polling.base_delay, attempt)
-                            logger.warning(f'Retrying in {delay:.1f}s (status={resp.status}, attempt={attempt}, venue={venue}, activity={activity}, booking_date={booking_date})')
+                            logger.warning(
+                                'Retrying in %.1fs (status=%s, attempt=%s, venue=%s, activity=%s, booking_date=%s)',
+                                delay, resp.status, attempt, venue, activity, booking_date
+                            )
                             await asyncio.sleep(delay)
                             continue
-                        logger.error(f'Max retries exceeded (status={resp.status}, venue={venue}, activity={activity}, booking_date={booking_date})')
+                        logger.error(
+                            'Max retries exceeded (status=%s, venue=%s, activity=%s, booking_date=%s)',
+                            resp.status, venue, activity, booking_date
+                        )
                         return []
 
                     resp.raise_for_status()
@@ -124,10 +137,16 @@ class CourtPoller:
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 if attempt < CONFIG.polling.max_retries:
                     delay = get_backoff_delay(CONFIG.polling.base_delay, attempt)
-                    logger.warning(f'Retrying in {delay:.1f}s (attempt={attempt}, venue={venue}, activity={activity}, booking_date={booking_date})')
+                    logger.warning(
+                        'Retrying in %.1fs (attempt=%s, venue=%s, activity=%s, booking_date=%s)',
+                        delay, attempt, venue, activity, booking_date
+                    )
                     await asyncio.sleep(delay)
                     continue
-                logger.exception(f'Max retries exceeded (venue={venue}, activity={activity}, booking_date={booking_date})')
+                logger.exception(
+                    'Max retries exceeded (venue=%s, activity=%s, booking_date=%s)',
+                    venue, activity, booking_date
+                )
                 return []
 
         return []

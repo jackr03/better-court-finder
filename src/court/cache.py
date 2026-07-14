@@ -23,16 +23,16 @@ class CourtCache:
         key = self._format_key(venue, booking_date)
         value = await self._client.get(key)
         if value is None:
-            logger.debug(f'Cache miss (key={key})')
+            logger.debug('Cache miss (key=%s)', key)
             return []
-        logger.debug(f'Cache get (key={key}, value={value=})')
+        logger.debug('Cache get (key=%s, value=%s)', key, value)
         return [Court.from_dict(court) for court in json.loads(value)]
 
     async def set(self, venue: Venue, booking_date: date, courts: list[Court]) -> None:
         key = self._format_key(venue, booking_date)
         value = json.dumps([court.to_dict() for court in courts])
         await self._client.set(key, value, ex=CONFIG.redis.ttl)
-        logger.debug(f'Cache set (key={key}, courts={len(courts)})')
+        logger.debug('Cache set (key=%s, courts=%s)', key, len(courts))
 
     async def get_last_updated(self) -> datetime:
         last_updated = await self._client.get(self.LAST_UPDATED_KEY)

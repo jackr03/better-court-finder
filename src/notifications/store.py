@@ -20,7 +20,12 @@ class NotificationStore:
 
 	async def connect(self) -> None:
 		self._pool = await asyncpg.create_pool(**self._conn_params)
-		logger.info(f'Connected to Postgres (host={self._conn_params['host']}, port={self._conn_params['port']}, database={self._conn_params['database']})')
+		logger.info(
+			'Connected to Postgres (host=%s, port=%s, database=%s)',
+			self._conn_params['host'],
+			self._conn_params['port'],
+			self._conn_params['database'],
+		)
 
 	async def close(self) -> None:
 		if self._pool:
@@ -50,6 +55,7 @@ class NotificationStore:
 			''',
 			user_id, venue
 		)
+		logger.info('Subscribed user %s to %s', user_id, venue)
 
 	async def unsubscribe(self, user_id, venue: Venue) -> None:
 		await self._pool.execute(
@@ -59,6 +65,7 @@ class NotificationStore:
 			''',
 			user_id, venue
 		)
+		logger.info('Unsubscribed user %s from %s', user_id, venue)
 
 	async def unsubscribe_all(self, user_id) -> None:
 		await self._pool.execute(
@@ -68,6 +75,7 @@ class NotificationStore:
 			''',
 			user_id
 		)
+		logger.info('Unsubscribed user %s from all venues', user_id)
 
 	async def find_venues_for_user(self, user_id) -> set[Venue]:
 		rows = await self._pool.fetch(
@@ -78,7 +86,9 @@ class NotificationStore:
 			user_id
 		)
 
-		return {Venue(row['venue']) for row in rows}
+		results = {Venue(row['venue']) for row in rows}
+		logger.debug('Found venues: %s for user %s', results, user_id)
+		return results
 
 	async def find_users_for_venue(self, venue: Venue) -> set[str]:
 		rows = await self._pool.fetch(
@@ -89,4 +99,6 @@ class NotificationStore:
 			venue
 		)
 
-		return {row['user_id'] for row in rows}
+		results = {row['user_id'] for row in rows}
+		logger.debug('Found users: %s for venue %s', results, venue)
+		return results

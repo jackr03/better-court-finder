@@ -29,7 +29,7 @@ async def main():
 				  port=CONFIG.redis.port,
 				  decode_responses=True)
 	await redis.ping()
-	logger.info(f'Connected to Redis (host={CONFIG.redis.host}, port={CONFIG.redis.port})')
+	logger.info('Connected to Redis (host=%s, port=%s)', CONFIG.redis.host, CONFIG.redis.port)
 
 	notification_store = NotificationStore(user=CONFIG.postgres.user,
 										   password=CONFIG.postgres.password,
@@ -46,7 +46,7 @@ async def main():
 	# Log any venues that are disabled for Discord
 	disabled = [v.name for v in Venue if v not in CONFIG.discord.webhooks.keys()]
 	if disabled:
-		logger.warning(f'Discord notifications disabled for %s', ', '.join(disabled))
+		logger.warning('Discord notifications disabled for %s', ', '.join(disabled))
 
 	discord_subscriber = CourtSubscriber(redis)
 	discord_notifier = DiscordNotifier(discord_subscriber, CONFIG.discord.webhooks)

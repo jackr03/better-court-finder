@@ -36,6 +36,6 @@ class CourtPublisher:
 			receivers = await self._client.publish(channel, payload)
 
 			if receivers == 0:
-				logger.warning(f'Published {state} to {channel} but no subscribers were listening')
+				logger.warning('Published %s to %s but no subscribers were listening', state, channel)
 			else:
-				logger.debug(f'Published {state} to {channel} ({len(venue_courts)} courts) to {receivers} receivers')
+				logger.debug('Published %s to %s (%s courts) to %s receivers', state, channel, len(venue_courts), receivers)
