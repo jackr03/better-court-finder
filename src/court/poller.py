@@ -18,11 +18,10 @@ logger = logging.getLogger(__name__)
 class CourtPoller:
     API_URL = 'https://better-admin.org.uk/api/activities/venue/{venue}/activity/{activity}/v2/times'
     HEADERS = {
-        'accept': 'application/json',
         'origin': 'https://bookings.better.org.uk',
-        'referer': 'https://bookings.better.org.uk/',
-        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0.1 Safari/605.1.15'
     }
+    # We could look ahead 6 days, but this would require an auth token
+    MAX_LOOKAHEAD_DAYS = 5
 
     def __init__(self, cache: CourtCache, publisher: CourtPublisher) -> None:
         self._cache = cache
@@ -85,7 +84,7 @@ class CourtPoller:
 
     async def _fetch_all(self, session: aiohttp.ClientSession) -> list[Court]:
         # Check the next 6 days for all courts
-        dates = [(datetime.today() + timedelta(days=i)).date() for i in range(6)]
+        dates = [(datetime.today() + timedelta(days=i)).date() for i in range(self.MAX_LOOKAHEAD_DAYS + 1)]
         args = [
             (venue, activity, booking_date)
             for venue in Venue for activity in venue.activities for booking_date in dates
@@ -115,7 +114,7 @@ class CourtPoller:
                         self.API_URL.format(venue=venue, activity=activity),
                         params={'date': booking_date.isoformat()}
                 ) as resp:
-                    # Retry with exponential backoff + jitter
+                    # Retry with exponential backoff + jitter if rate limited / server error
                     if resp.status == 429 or resp.status >= 500:
                         if attempt < CONFIG.polling.max_retries:
                             delay = get_backoff_delay(CONFIG.polling.base_delay, attempt)
@@ -131,7 +130,15 @@ class CourtPoller:
                         )
                         return []
 
-                    resp.raise_for_status()
+                    # Otherwise log error and stop immediately
+                    if resp.status >= 400:
+                        err_message = (await resp.json()).get('message', resp.reason)
+                        logger.error(
+                            'Request failed (status=%s, venue=%s, activity=%s, booking_date=%s): %s',
+                            resp.status, venue, activity, booking_date, err_message
+                        )
+                        return []
+
                     data = (await resp.json())['data']
                     return [Court.from_api(court) for court in data]
             except (aiohttp.ClientError, asyncio.TimeoutError):

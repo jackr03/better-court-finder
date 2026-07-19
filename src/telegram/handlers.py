@@ -24,6 +24,7 @@ from src.utils import format_date_and_time, format_date
 logger = logging.getLogger(__name__)
 router = Router()
 
+MAX_LOOKAHEAD_DAYS = 5
 MAX_MSG_LENGTH = 4096
 
 
@@ -80,7 +81,7 @@ async def search_all_callback(
 @router.callback_query(F.data == Commands.SEARCH_BY_DATE)
 @log_update
 async def search_by_date_callback(callback_query: CallbackQuery, cache: CourtCache):
-	dates = [(datetime.today() + timedelta(days=i)).date() for i in range(6)]
+	dates = [(datetime.today() + timedelta(days=i)).date() for i in range(MAX_LOOKAHEAD_DAYS + 1)]
 	keyboard_buttons = [
 		[InlineKeyboardButton(
 			text=f'📅 {format_date(d)}',
@@ -297,7 +298,7 @@ async def close_callback(callback_query: CallbackQuery, state: FSMContext) -> No
 
 async def _delete_stored_messages(callback_query: CallbackQuery, state: FSMContext) -> None:
 	data = await state.get_data()
-	message_ids = data.get('message_ids')
+	message_ids: list[int] | None = data.get('message_ids')
 	if not message_ids:
 		return
 

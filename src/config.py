@@ -83,12 +83,24 @@ def _load_telegram_config() -> TelegramConfig:
 
 @dataclass(frozen=True)
 class Config:
-    logging_level: int = logging.INFO
-    polling: PollingConfig = PollingConfig()
-    redis: RedisConfig = _load_redis_config()
-    postgres: PostgresConfig = _load_postgres_config()
-    discord: DiscordConfig = _load_discord_config()
-    telegram: TelegramConfig = _load_telegram_config()
+    logging_level: int
+    polling: PollingConfig
+    redis: RedisConfig
+    postgres: PostgresConfig
+    discord: DiscordConfig
+    telegram: TelegramConfig
 
 
-CONFIG = Config()
+def _load_config() -> Config:
+    return Config(
+        logging_level=logging.INFO,
+        polling=PollingConfig(),
+        redis=_load_redis_config(),
+        postgres=_load_postgres_config(),
+        discord=_load_discord_config(),
+        telegram=_load_telegram_config(),
+
+    )
+
+
+CONFIG = _load_config()
