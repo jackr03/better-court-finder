@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from datetime import date, datetime, timedelta
 
 import aiohttp
@@ -35,7 +36,9 @@ class CourtPoller:
         logger.debug(CONFIG.polling)
         async with aiohttp.ClientSession(headers=self.HEADERS) as session:
             while True:
+                start_time = time.perf_counter()
                 courts = await self._fetch_all(session)
+                time_taken = time.perf_counter() - start_time
 
                 # 1. Group by (venue, date) to store in Redis
                 # 2. Store in-memory to compute court changes later
@@ -66,7 +69,7 @@ class CourtPoller:
                     await self._cache.set(venue, booking_date, courts)
                 await self._cache.set_last_updated()
 
-                logger.info('Cached %d venue-date groups', len(grouped))
+                logger.info('Cached %d venue-date groups, %.2fs taken', len(grouped), time_taken)
                 logger.debug('Poll cycle complete, next in %ss', CONFIG.polling.interval)
                 try:
                     await asyncio.sleep(CONFIG.polling.interval)
@@ -99,6 +102,8 @@ class CourtPoller:
         results = await asyncio.gather(*[fetch_one(venue, activity, booking_date) for venue, activity, booking_date in args])
         return [court for batch in results for court in batch]
 
+    # FIXME: This currently returns an empty list even on API errors
+    # We need to return None instead and handle properly
     async def _fetch(
             self,
             session: aiohttp.ClientSession,

@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import logging
 
@@ -24,25 +25,66 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-async def main():
+
+async def get_redis() -> Redis:
 	redis = Redis(host=CONFIG.redis.host,
 				  port=CONFIG.redis.port,
 				  decode_responses=True)
 	await redis.ping()
 	logger.info('Connected to Redis (host=%s, port=%s)', CONFIG.redis.host, CONFIG.redis.port)
 
+	return redis
+
+
+async def get_notification_store() -> NotificationStore:
 	notification_store = NotificationStore(user=CONFIG.postgres.user,
 										   password=CONFIG.postgres.password,
 										   database=CONFIG.postgres.database,
 										   host=CONFIG.postgres.host,
 										   port=CONFIG.postgres.port)
 	await notification_store.connect()
+	return notification_store
 
+
+async def run_poller() -> None:
+	redis = await get_redis()
 	cache = CourtCache(redis)
 	publisher = CourtPublisher(redis)
 	poller = CourtPoller(cache, publisher)
 
-	# Discord
+	try:
+		await poller.run()
+	finally:
+		await redis.aclose()
+
+
+async def run_telegram() -> None:
+	redis = await get_redis()
+	notification_store = await get_notification_store()
+	cache = CourtCache(redis)
+
+	aiogram_bot = Bot(
+		token=CONFIG.telegram.token,
+		default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
+	)
+	telegram_bot = TelegramBot(aiogram_bot, notification_store, cache)
+	telegram_subscriber = CourtSubscriber(redis)
+	telegram_notifier = TelegramNotifier(telegram_subscriber, notification_store, aiogram_bot)
+
+	try:
+		async with asyncio.TaskGroup() as taskgroup:
+			taskgroup.create_task(telegram_bot.run())
+			taskgroup.create_task(telegram_notifier.run())
+	finally:
+		await telegram_notifier.stop()
+		await aiogram_bot.close()
+		await notification_store.close()
+		await redis.aclose()
+
+
+async def run_discord() -> None:
+	redis = await get_redis()
+
 	# Log any venues that are disabled for Discord
 	disabled = [v.name for v in Venue if v not in CONFIG.discord.webhooks.keys()]
 	if disabled:
@@ -51,39 +93,30 @@ async def main():
 	discord_subscriber = CourtSubscriber(redis)
 	discord_notifier = DiscordNotifier(discord_subscriber, CONFIG.discord.webhooks)
 
-	# Telegram
-	aiogram_bot = Bot(token=CONFIG.telegram.token, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
-	telegram_bot = TelegramBot(aiogram_bot, notification_store, cache)
-	telegram_subscriber = CourtSubscriber(redis)
-	telegram_notifier = TelegramNotifier(telegram_subscriber, notification_store, aiogram_bot)
-
-	# Tasks
-	poller_task = asyncio.create_task(poller.run())
-	discord_notifier_task = asyncio.create_task(discord_notifier.run())
-	telegram_bot_task = asyncio.create_task(telegram_bot.run())
-	telegram_notifier_task = asyncio.create_task(telegram_notifier.run())
-
-	notifiers = [discord_notifier, telegram_notifier]
-	tasks = [poller_task, discord_notifier_task, telegram_bot_task, telegram_notifier_task]
-
 	try:
-		await asyncio.gather(*tasks)
-	except asyncio.CancelledError:
-		pass
+		await discord_notifier.run()
 	finally:
-		logger.info('Shutting down')
-
-		for task in tasks:
-			task.cancel()
-		await asyncio.gather(*tasks, return_exceptions=True)
-
-		for notifier in notifiers:
-			await notifier.stop()
-
-		await aiogram_bot.session.close()
-		await notification_store.close()
+		await discord_notifier.stop()
 		await redis.aclose()
 
 
+SERVICES = {
+	'poller': run_poller,
+	'telegram': run_telegram,
+	'discord': run_discord,
+}
+
+
+def main() -> None:
+	parser = argparse.ArgumentParser()
+	parser.add_argument('service', choices=SERVICES)
+	args = parser.parse_args()
+
+	try:
+		asyncio.run(SERVICES[args.service]())
+	except KeyboardInterrupt:
+		logger.info('Shutting down...')
+
+
 if __name__ == '__main__':
-	asyncio.run(main())
+	main()

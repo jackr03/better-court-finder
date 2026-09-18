@@ -1,9 +1,31 @@
+x-app: &app
+  build: .
+  container_name: bcf
+  env_file: .env
+  environment:
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: 5432
+  depends_on:
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+  restart: unless-stopped
+  profiles: [ "app" ]
+
 services:
   redis:
     image: redis:8-alpine
     container_name: redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   postgres:
     image: postgres:18
@@ -18,26 +40,29 @@ services:
       - pgdata:/var/lib/postgresql
       - ./db:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  bot:
-    build: .
-    container_name: bot
-    env_file: .env
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-    depends_on:
-      redis:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-    profiles: ["bot"]
+  poller:
+    <<: *app
+    container_name: poller
+    command: ["python", "-m", "src.main", "poller"]
+
+  telegram:
+    <<: *app
+    container_name: telegram
+    command: [ "python", "-m", "src.main", "telegram" ]
+
+  discord:
+    <<: *app
+    container_name: discord
+    command: [ "python", "-m", "src.main", "discord" ]
 
 volumes:
   pgdata:
+
+networks:
+  default:
+    name: better-court-finder-network

@@ -20,16 +20,25 @@ class DiscordNotifier(Notifier):
 	def __init__(self, subscriber: CourtSubscriber, webhooks: dict[Venue, str]):
 		super().__init__(subscriber)
 		self._webhooks = webhooks
+		self._semaphore = asyncio.Semaphore(5)
 		self._session: aiohttp.ClientSession | None = None
 
 	async def run(self) -> None:
 		self._session = aiohttp.ClientSession()
+		await self._verify_webhooks()
 		await super().run()
 
 	async def stop(self) -> None:
 		await super().stop()
 		if self._session:
 			await self._session.close()
+
+	async def _verify_webhooks(self):
+		for venue, webhook_url in self._webhooks.items():
+			async with self._session.get(webhook_url) as resp:
+				resp.raise_for_status()
+				info = await resp.json()
+				logger.info('Discord webhook verified (channel_name=%s, channel_id=%s)', venue, info['channel_id'])
 
 	async def _on_event(self, venue: Venue, event: CourtEvent) -> None:
 		webhook_url = self._webhooks.get(venue)
