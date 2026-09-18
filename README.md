@@ -3,7 +3,7 @@
 ![PostgreSQL](https://img.shields.io/badge/postgresql-4169e1?style=for-the-badge&logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 
-A service that polls Better's public API for badminton court availability across Manchester venues and pushes real-time notifications to subscribers via Telegram and Discord. Built with Python and `asyncio`, using Redis pub/sub to decouple the poller from delivery channels, and Postgres as the store for subscriptions.
+A service that polls Better's public API for badminton court availability across Manchester venues to push real-time notifications to subscribers via Telegram and Discord. Built with Python and `asyncio`, using Redis for pub/sub delivery and caching polled availabilities, and Postgres as the store for subscriptions.
 
 ## Architecture
 
